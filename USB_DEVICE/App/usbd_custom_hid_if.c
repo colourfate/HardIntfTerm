@@ -91,10 +91,22 @@
 /** Usb HID report descriptor. */
 __ALIGN_BEGIN static uint8_t CUSTOM_HID_ReportDesc_FS[USBD_CUSTOM_HID_REPORT_DESC_SIZE] __ALIGN_END =
 {
-  /* USER CODE BEGIN 0 */
-  0x00,
-  /* USER CODE END 0 */
-  0xC0    /*     END_COLLECTION	             */
+    0x06, 0x00, 0xff,              // USAGE_PAGE (Vendor Defined Page 1)
+    0x09, 0x01,                    // USAGE (Vendor Usage 1)
+    0xa1, 0x01,                    // COLLECTION (Application)
+    0x09, 0x01,                    //   USAGE (Vendor Usage 1)
+    0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
+    0x26, 0xff, 0x00,              //   LOGICAL_MAXIMUM (255)
+    0x95, 0x40,                    //   REPORT_COUNT (64)
+    0x75, 0x08,                    //   REPORT_SIZE (8)
+    0x81, 0x02,                    //   INPUT (Data,Var,Abs)
+    0x09, 0x01,                    //   USAGE (Vendor Usage 1)
+    0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
+    0x26, 0xff, 0x00,              //   LOGICAL_MAXIMUM (255)
+    0x95, 0x40,                    //   REPORT_COUNT (64)
+    0x75, 0x08,                    //   REPORT_SIZE (8)
+    0x91, 0x02,                    //   OUTPUT (Data,Var,Abs)
+    0xc0                           // END_COLLECTION
 };
 
 /* USER CODE BEGIN PRIVATE_VARIABLES */
@@ -174,11 +186,23 @@ static int8_t CUSTOM_HID_DeInit_FS(void)
   * @param  state: Event state
   * @retval USBD_OK if all operations are OK else USBD_FAIL
   */
+
+uint8_t g_usb_receive_buffer[64];
+
 static int8_t CUSTOM_HID_OutEvent_FS(uint8_t event_idx, uint8_t state)
 {
   /* USER CODE BEGIN 6 */
+  int8_t receive_byte, i;
+  USBD_CUSTOM_HID_HandleTypeDef *hhid;
+
   UNUSED(event_idx);
   UNUSED(state);
+
+  receive_byte = USBD_GetRxCount(&hUsbDeviceFS, CUSTOM_HID_EPOUT_ADDR);
+  hhid = (USBD_CUSTOM_HID_HandleTypeDef *)hUsbDeviceFS.pClassData;
+  for(i = 0; i < receive_byte; i++) {
+    g_usb_receive_buffer[i]=hhid->Report_buf[i];
+  }
 
   /* Start next USB packet transfer once data processing is completed */
   USBD_CUSTOM_HID_ReceivePacket(&hUsbDeviceFS);
