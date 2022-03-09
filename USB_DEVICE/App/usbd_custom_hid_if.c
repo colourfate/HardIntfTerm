@@ -21,6 +21,8 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "usbd_custom_hid_if.h"
+#include "usb_msg_queue.h"
+#include "common.h"
 
 /* USER CODE BEGIN INCLUDE */
 
@@ -186,9 +188,6 @@ static int8_t CUSTOM_HID_DeInit_FS(void)
   * @param  state: Event state
   * @retval USBD_OK if all operations are OK else USBD_FAIL
   */
-
-uint8_t g_usb_receive_buffer[64];
-
 static int8_t CUSTOM_HID_OutEvent_FS(uint8_t event_idx, uint8_t state)
 {
   /* USER CODE BEGIN 6 */
@@ -199,11 +198,31 @@ static int8_t CUSTOM_HID_OutEvent_FS(uint8_t event_idx, uint8_t state)
   UNUSED(state);
 
   receive_byte = USBD_GetRxCount(&hUsbDeviceFS, CUSTOM_HID_EPOUT_ADDR);
-  hhid = (USBD_CUSTOM_HID_HandleTypeDef *)hUsbDeviceFS.pClassData;
-  for(i = 0; i < receive_byte; i++) {
-    g_usb_receive_buffer[i]=hhid->Report_buf[i];
+  receive_byte = 4;
+  if (receive_byte % sizeof(cmd_packet) != 0) {
+    log_err("Error cmd packet\n");
+    goto next;
   }
 
+  hhid = (USBD_CUSTOM_HID_HandleTypeDef *)hUsbDeviceFS.pClassData;
+  for(i = 0; i < receive_byte; i += sizeof(cmd_packet)) {
+    cmd_packet *packet = (cmd_packet *)&hhid->Report_buf[i];
+    int ret;
+
+    packet->cmd.bit.type = INTF_CMD_TYPE_GPIO;
+    packet->cmd.bit.dir = INTF_CMD_DIR_OUT;
+    packet->gpio.bit.group = CHIP_GPIOC;
+    packet->gpio.bit.pin = 13;
+    packet->data_len = 1;
+    packet->data[0] = 1;
+    ret = usb_msg_queue_put(packet);
+    if (ret < 0) {
+      log_err("usb_msg_queue_put failed\n");
+      goto next;
+    }
+  }
+
+next:
   /* Start next USB packet transfer once data processing is completed */
   USBD_CUSTOM_HID_ReceivePacket(&hUsbDeviceFS);
 

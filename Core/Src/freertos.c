@@ -24,6 +24,9 @@
 #include "main.h"
 #include "cmsis_os.h"
 #include "usbd_customhid.h"
+#include "usb_msg_queue.h"
+#include "common.h"
+#include "usart.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -57,12 +60,20 @@ const osThreadAttr_t LedTask_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 
+osThreadId_t usb_task_handle;
+const osThreadAttr_t usb_task_attributes = {
+  .name = "usb_task",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 
 /* USER CODE END FunctionPrototypes */
 
 void led_task(void *argument);
+void usb_task(void *argument);
 
 extern void MX_USB_DEVICE_Init(void);
 extern USBD_HandleTypeDef hUsbDeviceFS;
@@ -97,6 +108,7 @@ void MX_FREERTOS_Init(void) {
   /* Create the thread(s) */
   /* creation of LedTask */
   LedTaskHandle = osThreadNew(led_task, NULL, &LedTask_attributes);
+  usb_task_handle = osThreadNew(usb_task, NULL, &usb_task_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -112,7 +124,6 @@ static const uint8_t g_send_buf[64] = { 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,
                          17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,
                          40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64}; 
 
-extern uint8_t g_usb_receive_buffer[64];
 /* USER CODE BEGIN Header_led_task */
 /**
   * @brief  Function implementing the LedTask thread.
@@ -122,9 +133,8 @@ extern uint8_t g_usb_receive_buffer[64];
 /* USER CODE END Header_led_task */
 void led_task(void *argument)
 {
-  /* init code for USB_DEVICE */
-  MX_USB_DEVICE_Init();
   /* USER CODE BEGIN led_task */
+  //MX_USB_DEVICE_Init();
   /* Infinite loop */
   for(;;)
   {
@@ -136,6 +146,55 @@ void led_task(void *argument)
     //memset(g_usb_receive_buffer, 0, sizeof(g_usb_receive_buffer));
   }
   /* USER CODE END led_task */
+}
+
+cmd_packet g_test_packet;
+
+void usb_task(void *argument)
+{
+  int ret;
+
+  MX_USB_DEVICE_Init();
+  log_err("usb init ok\n");
+
+  ret = usb_msg_queue_init();
+  if (ret < 0) {
+    log_err("usb_msg_queue_init failed\n");
+    goto exit;
+  }
+
+  g_test_packet.cmd.bit.type = 1;
+  g_test_packet.cmd.bit.dir = 1;
+  g_test_packet.gpio.bit.group = 3;
+  g_test_packet.gpio.bit.pin = 4;
+  g_test_packet.data_len = 1;
+  g_test_packet.data[0] = 1;
+  usb_msg_queue_put(&g_test_packet);
+
+  for(;;)
+  {
+    cmd_packet packet;
+    int ret;
+
+    ret = usb_msg_queue_get(&packet);
+    if (ret == USB_MSG_RETRY) {
+      continue;
+    } else if (ret == USB_MSG_FAILED) {
+      log_err("usb_msg_queue_get failed\n");
+      break;
+    }
+    
+    log_err("get packet: [cmd: %d, dir: %d, group: %d, pin: %d, len: %d, value: %d]\n", packet.cmd.bit.type,
+      packet.cmd.bit.dir, packet.gpio.bit.group, packet.gpio.bit.pin, packet.data_len, packet.data[0]);
+    /* TODO: parse, exec and report result */
+    //USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, g_usb_receive_buffer, sizeof(g_usb_receive_buffer));
+    osDelay(1);
+  }
+
+exit:
+  usb_msg_queue_deinit();
+  /* USER CODE END led_task */
+  while (1) {};
 }
 
 /* Private application code --------------------------------------------------*/
