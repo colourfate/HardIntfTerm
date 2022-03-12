@@ -19,6 +19,7 @@ typedef enum {
     INTF_CMD_TYPE_SERIAL,
     INTF_CMD_TYPE_I2C,
     INTF_CMD_TYPE_SPI,
+    INTF_CMD_TYPE_CAN,
     INTF_CMD_TYPE_MAX
 } intf_cmd_type;
 
@@ -34,6 +35,9 @@ typedef enum {
     CHIP_GPIOC,
     CHIP_GPIOD,
     CHIP_GPIOE,
+    CHIP_GPIOF,
+    CHIP_GPIOG,
+    CHIP_GPIOH,
     CHIP_MUL_FUNC,
     CHIP_GPIO_MAX
 } chip_gpio_group;
@@ -67,5 +71,7 @@ int usb_msg_queue_init(void);
 int usb_msg_queue_deinit(void);
 int usb_msg_queue_put(const cmd_packet *packet);
 int usb_msg_queue_get(cmd_packet *packet);
+
+int msg_parse_exec(const cmd_packet *packet);
 
 #endif

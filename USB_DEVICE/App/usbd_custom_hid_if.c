@@ -198,13 +198,14 @@ static int8_t CUSTOM_HID_OutEvent_FS(uint8_t event_idx, uint8_t state)
   UNUSED(state);
 
   receive_byte = USBD_GetRxCount(&hUsbDeviceFS, CUSTOM_HID_EPOUT_ADDR);
-  receive_byte = 4;
-  if (receive_byte % sizeof(cmd_packet) != 0) {
-    log_err("Error cmd packet\n");
+  receive_byte = 64;
+
+  hhid = (USBD_CUSTOM_HID_HandleTypeDef *)hUsbDeviceFS.pClassData;
+  if (receive_byte % sizeof(cmd_packet) != 0 || receive_byte > count_of(hhid->Report_buf)) {
+    log_err("Error cmd packet: %d\n", receive_byte);
     goto next;
   }
 
-  hhid = (USBD_CUSTOM_HID_HandleTypeDef *)hUsbDeviceFS.pClassData;
   for(i = 0; i < receive_byte; i += sizeof(cmd_packet)) {
     cmd_packet *packet = (cmd_packet *)&hhid->Report_buf[i];
     int ret;
