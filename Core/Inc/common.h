@@ -10,5 +10,6 @@
 #define log_err(fmt, args...) printf("%s[%d]: " fmt, __func__, __LINE__, ##args)
 
 #define count_of(arr) (sizeof(arr) / sizeof(arr[0]))
+#define align_up(x, a) (((x) + (a) - 1) / (a))
 
 #endif

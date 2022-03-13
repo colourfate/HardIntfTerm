@@ -2,14 +2,41 @@
 #include "cmsis_os2.h"
 #include "common.h"
 #include "main.h"
+#include "usart.h"
 
-static osMessageQueueId_t g_cmd_queue_handle = NULL;
+/* 
+ * INIT --> CONFIG --> CMD <--> DATA --> EXIT
+ *                      |---------------->|
+ */
+/*
+typydef enum {
+    EXEC_MACHINE_INIT,
+    EXEC_MACHINE_CONFIG,
+    EXEC_MACHINE_CMD,
+    EXEC_MACHINE_DATA,
+    EXEC_MACHINE_EXIT,
+    EXEC_MACHINE_MAX
+} exec_machine_state;
+*/
+
+typedef int (*exec_func)(uint32_t addr, uint32_t offset, uint8_t *data, uint8_t len);
+
+typedef struct {
+    //exec_machine_state state;
+    exec_func last_entry;
+    cmd_packet last_packet;
+    osMessageQueueId_t cmd_queue;
+} cmd_terminal;
+
+static cmd_terminal g_termianl_panel = {
+    .last_packet.data_len = 1
+};
 
 int usb_msg_queue_init(void)
 {
     /* 16 * sizeof(cmd_packet) = 64 is a max usb packet */
-    g_cmd_queue_handle = osMessageQueueNew(16 * 8, sizeof(cmd_packet), NULL);
-    if (g_cmd_queue_handle == NULL) {
+    g_termianl_panel.cmd_queue = osMessageQueueNew(16 * 8, sizeof(cmd_packet), NULL);
+    if (g_termianl_panel.cmd_queue == NULL) {
         log_err("osMessageQueueNew failed\n");
         return USB_MSG_FAILED;
     }
@@ -19,19 +46,13 @@ int usb_msg_queue_init(void)
 
 int usb_msg_queue_deinit(void)
 {
-    osStatus_t ret;
-
-    if (g_cmd_queue_handle == NULL) {
+    if (g_termianl_panel.cmd_queue == NULL) {
         log_err("cmd bridge need init\n");
         return USB_MSG_FAILED;
     }
 
-    ret = osMessageQueueDelete(g_cmd_queue_handle);
-    if (ret != osOK) {
-        log_err("osMessageQueueDelete failed\n");
-        return USB_MSG_FAILED;
-    }
-    g_cmd_queue_handle = NULL;
+    (void)osMessageQueueDelete(g_termianl_panel.cmd_queue);
+    g_termianl_panel.cmd_queue = NULL;
 
     return USB_MSG_OK;
 }
@@ -45,12 +66,12 @@ int usb_msg_queue_put(const cmd_packet *packet)
         return USB_MSG_FAILED;
     }
 
-    if (g_cmd_queue_handle == NULL) {
+    if (g_termianl_panel.cmd_queue == NULL) {
         log_err("cmd bridge need init\n");
         return USB_MSG_FAILED;
     }
 
-    ret = osMessageQueuePut(g_cmd_queue_handle, packet, 0, 0);
+    ret = osMessageQueuePut(g_termianl_panel.cmd_queue, packet, 0, 0);
     if (ret != osOK) {
         log_err("queue data failed\n");
         return USB_MSG_FAILED;
@@ -68,12 +89,12 @@ int usb_msg_queue_get(cmd_packet *packet)
         return USB_MSG_FAILED;
     }
 
-    if (g_cmd_queue_handle == NULL) {
+    if (g_termianl_panel.cmd_queue == NULL) {
         log_err("cmd bridge need init\n");
         return USB_MSG_FAILED;
     }
 
-    ret = osMessageQueueGet(g_cmd_queue_handle, packet, NULL, 0);
+    ret = osMessageQueueGet(g_termianl_panel.cmd_queue, packet, NULL, 0);
     if (ret == osErrorResource) {
         return USB_MSG_RETRY;
     } else if (ret != osOK){
@@ -113,7 +134,7 @@ static GPIO_TypeDef *get_gpio_type_define(chip_gpio_group gpio_group)
 static inline uint32_t get_gpio_pin(uint32_t pin_num)
 {
     if (pin_num > 15) {
-        log_err("Not support gpio pin: %d\n", pin_num);
+        log_err("Not support gpio pin: %lu\n", pin_num);
         return 0xffffffff;
     } 
 
@@ -144,6 +165,8 @@ static int gpio_write_exec_func(uint32_t gpio_group, uint32_t pin_num, uint8_t *
     GPIO_TypeDef *gpio_type = get_gpio_type_define(gpio_group);
     uint32_t gpio_pin = get_gpio_pin(pin_num);
 
+    UNUSED(len);
+
     if (gpio_type == NULL || gpio_pin == 0xffffffff) {
         return USB_MSG_FAILED;
     }
@@ -158,31 +181,87 @@ static int gpio_write_exec_func(uint32_t gpio_group, uint32_t pin_num, uint8_t *
     return USB_MSG_OK;
 }
 
+static int serial_out_exec_func(uint32_t gpio_group, uint32_t serial_num, uint8_t *data, uint8_t len)
+{
+    UNUSED(gpio_group);
+
+    if (serial_num > 2) {
+        log_err("Not serial num: %d\n", serial_num);
+        return USB_MSG_FAILED;
+    }
+
+    if (data == NULL) {
+        log_err("Invalid param data: %p\n", data);
+        return USB_MSG_FAILED;
+    }
+
+    /* Only uart2 in the chip */
+    //log_err("%c: %d\n", *data, len);
+    HAL_UART_Transmit(&huart2, data, len, 0xFFFF);
+
+    return USB_MSG_OK;
+}
+
 typedef struct {
     intf_cmd_type cmd_type;
     intf_cmd_dir cmd_dir;
-    int (*exec_func)(uint32_t addr, uint32_t offset, uint8_t *data, uint8_t len);
+    exec_func entry;
 } cmd_exec_unit;
 
 static const cmd_exec_unit g_cmd_exec_tab[] = {
     { INTF_CMD_TYPE_GPIO, INTF_CMD_DIR_IN, gpio_read_exec_func },
     { INTF_CMD_TYPE_GPIO, INTF_CMD_DIR_OUT, gpio_write_exec_func },
+    { INTF_CMD_TYPE_SERIAL, INTF_CMD_DIR_OUT, serial_out_exec_func },
 };
 
-int msg_parse_exec(const cmd_packet *packet)
+int msg_parse_exec(cmd_packet *packet)
 {
-    int i, ret = USB_MSG_FAILED;
+    int ret = USB_MSG_FAILED;
+    exec_func cur_entry = NULL;
+    cmd_packet *cur_packet = NULL;
+    uint8_t cur_len, i;
+    uint8_t *cur_data = NULL;
 
-    for (i = 0; i < count_of(g_cmd_exec_tab); i++) {
-        if (g_cmd_exec_tab[i].cmd_type == packet->cmd.bit.type && g_cmd_exec_tab[i].cmd_dir == packet->cmd.bit.dir) {
-            ret = g_cmd_exec_tab[i].exec_func(packet->gpio.bit.group, packet->gpio.bit.pin,
-                packet->data, packet->data_len);
-            break;
-        }
+    if (packet == NULL) {
+        log_err("packet is NULL\n");
+        return USB_MSG_FAILED;
     }
 
+    if (g_termianl_panel.last_packet.data_len == 1 || g_termianl_panel.last_packet.data_len == 0) {
+        for (i = 0; i < count_of(g_cmd_exec_tab); i++) {
+            if (g_cmd_exec_tab[i].cmd_type == packet->cmd.bit.type &&
+                g_cmd_exec_tab[i].cmd_dir == packet->cmd.bit.dir) {
+                cur_entry = g_cmd_exec_tab[i].entry;
+                cur_packet = packet;
+                cur_len = 1;
+                cur_data = packet->data;
+
+                g_termianl_panel.last_entry = g_cmd_exec_tab[i].entry;
+                g_termianl_panel.last_packet = *packet;
+                break;
+            }
+        }
+
+        if (i == count_of(g_cmd_exec_tab)) {
+            log_err("Not find entry, type: %d, dir: %d\n", packet->cmd.bit.type, packet->cmd.bit.dir);
+            return USB_MSG_FAILED;
+        }
+    } else {
+        cur_entry = g_termianl_panel.last_entry;
+        cur_packet = &g_termianl_panel.last_packet;
+        if (g_termianl_panel.last_packet.data_len >= sizeof(cmd_packet)) {
+            cur_len = sizeof(cmd_packet);
+            g_termianl_panel.last_packet.data_len -= sizeof(cmd_packet);
+        } else {
+            cur_len = g_termianl_panel.last_packet.data_len;
+            g_termianl_panel.last_packet.data_len = 0;
+        }
+        cur_data = (uint8_t *)packet;
+    }
+
+    ret = cur_entry(cur_packet->gpio.bit.group, cur_packet->gpio.bit.pin, cur_data, cur_len);
     if (ret != USB_MSG_OK) {
-        log_err("Cmd exec failed, type: %d, dir: %d, index: %d\n", packet->cmd.bit.type, packet->cmd.bit.dir, i);
+        log_err("Cmd exec failed, type: %d, dir: %d\n", packet->cmd.bit.type, packet->cmd.bit.dir);
         return USB_MSG_FAILED;
     }
 

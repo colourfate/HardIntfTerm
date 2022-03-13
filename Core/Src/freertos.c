@@ -19,6 +19,7 @@
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
+#include <string.h>
 #include "FreeRTOS.h"
 #include "task.h"
 #include "main.h"
@@ -60,6 +61,13 @@ const osThreadAttr_t LedTask_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 
+osThreadId_t serail_task_handle;
+const osThreadAttr_t serail_task_attributes = {
+  .name = "serail_task",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+
 osThreadId_t usb_task_handle;
 const osThreadAttr_t usb_task_attributes = {
   .name = "usb_task",
@@ -73,6 +81,7 @@ const osThreadAttr_t usb_task_attributes = {
 /* USER CODE END FunctionPrototypes */
 
 void led_task(void *argument);
+void serail_task(void *argument);
 void usb_task(void *argument);
 
 extern void MX_USB_DEVICE_Init(void);
@@ -85,39 +94,9 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
   * @retval None
   */
 void MX_FREERTOS_Init(void) {
-  /* USER CODE BEGIN Init */
-
-  /* USER CODE END Init */
-
-  /* USER CODE BEGIN RTOS_MUTEX */
-  /* add mutexes, ... */
-  /* USER CODE END RTOS_MUTEX */
-
-  /* USER CODE BEGIN RTOS_SEMAPHORES */
-  /* add semaphores, ... */
-  /* USER CODE END RTOS_SEMAPHORES */
-
-  /* USER CODE BEGIN RTOS_TIMERS */
-  /* start timers, add new ones, ... */
-  /* USER CODE END RTOS_TIMERS */
-
-  /* USER CODE BEGIN RTOS_QUEUES */
-  /* add queues, ... */
-  /* USER CODE END RTOS_QUEUES */
-
-  /* Create the thread(s) */
-  /* creation of LedTask */
-  LedTaskHandle = osThreadNew(led_task, NULL, &LedTask_attributes);
-  usb_task_handle = osThreadNew(usb_task, NULL, &usb_task_attributes);
-
-  /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
-  /* USER CODE END RTOS_THREADS */
-
-  /* USER CODE BEGIN RTOS_EVENTS */
-  /* add events, ... */
-  /* USER CODE END RTOS_EVENTS */
-
+    //LedTaskHandle = osThreadNew(led_task, NULL, &LedTask_attributes);
+    usb_task_handle = osThreadNew(usb_task, NULL, &usb_task_attributes);
+    serail_task_handle = osThreadNew(serail_task, NULL, &serail_task_attributes);
 }
 
 /* USER CODE BEGIN Header_led_task */
@@ -146,9 +125,44 @@ void led_task(void *argument)
         packet.data[0] = 1;
         usb_msg_queue_put(&packet);
         //HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
+
+        packet.cmd.bit.type = INTF_CMD_TYPE_GPIO;
+        packet.cmd.bit.dir = INTF_CMD_DIR_IN;
+        packet.gpio.bit.group = CHIP_GPIOA;
+        packet.gpio.bit.pin = 0;
+        packet.data_len = 1;
+        packet.data[0] = 0;
+        usb_msg_queue_put(&packet);
         //USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, g_usb_receive_buffer, sizeof(g_usb_receive_buffer));
-        //memset(g_usb_receive_buffer, 0, sizeof(g_usb_receive_buffer));
     }
+}
+
+void serail_task(void *argument)
+{
+    cmd_packet *packet;
+    char *str = "uart testdddddddddddddddddddddddddddddddddddd\r\n";
+    uint8_t packet_cnt = align_up(sizeof(cmd_packet) + strlen(str) - 1, sizeof(cmd_packet));
+
+    packet = malloc(packet_cnt * sizeof(cmd_packet));
+
+    packet->cmd.bit.type = INTF_CMD_TYPE_SERIAL;
+    packet->cmd.bit.dir = INTF_CMD_DIR_OUT;
+    packet->gpio.bit.group = CHIP_MUL_FUNC;
+    packet->gpio.bit.pin = 2;
+    packet->data_len = strlen(str);
+    strcpy((char *)packet->data, str);
+    osDelay(1000);
+
+    for (;;) {
+        uint8_t i;
+
+        for (i = 0; i < packet_cnt; i++) {
+            usb_msg_queue_put(&packet[i]);
+        }
+        osDelay(100);
+    }
+
+    free(packet);
 }
 
 cmd_packet g_test_packet;
@@ -166,6 +180,7 @@ void usb_task(void *argument)
         goto exit;
     }
 
+    /*
     g_test_packet.cmd.bit.type = 1;
     g_test_packet.cmd.bit.dir = 1;
     g_test_packet.gpio.bit.group = 3;
@@ -173,6 +188,7 @@ void usb_task(void *argument)
     g_test_packet.data_len = 1;
     g_test_packet.data[0] = 1;
     usb_msg_queue_put(&g_test_packet);
+    */
 
     for(;;)
     {
@@ -181,18 +197,23 @@ void usb_task(void *argument)
 
         ret = usb_msg_queue_get(&packet);
         if (ret == USB_MSG_RETRY) {
-        continue;
+            continue;
         } else if (ret == USB_MSG_FAILED) {
-        log_err("usb_msg_queue_get failed\n");
-        break;
+            log_err("usb_msg_queue_get failed\n");
+            break;
         }
         
         log_info("get packet: [cmd: %d, dir: %d, group: %d, pin: %d, len: %d, value: %d]\n", packet.cmd.bit.type,
             packet.cmd.bit.dir, packet.gpio.bit.group, packet.gpio.bit.pin, packet.data_len, packet.data[0]);
         ret = msg_parse_exec(&packet);
         if (ret != USB_MSG_OK) {
-        log_err("msg_parse_exec failed\n");
-        continue;
+            log_err("msg_parse_exec failed\n");
+            continue;
+        }
+
+        if (packet.cmd.bit.dir == INTF_CMD_DIR_IN) {
+            log_info("put packet: [cmd: %d, dir: %d, group: %d, pin: %d, len: %d, value: %d]\n", packet.cmd.bit.type,
+                packet.cmd.bit.dir, packet.gpio.bit.group, packet.gpio.bit.pin, packet.data_len, packet.data[0]);
         }
         /* TODO: parse, exec and report result */
         //USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, g_usb_receive_buffer, sizeof(g_usb_receive_buffer));

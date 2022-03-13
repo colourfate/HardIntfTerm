@@ -72,6 +72,6 @@ int usb_msg_queue_deinit(void);
 int usb_msg_queue_put(const cmd_packet *packet);
 int usb_msg_queue_get(cmd_packet *packet);
 
-int msg_parse_exec(const cmd_packet *packet);
+int msg_parse_exec(cmd_packet *packet);
 
 #endif
