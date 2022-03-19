@@ -2,6 +2,7 @@
 #define _COMMON_H_
 #include <stdio.h>
 
+#define DEBUG
 #ifdef DEBUG
 #define log_info(fmt, args...) printf("%s[%d]: " fmt, __func__, __LINE__, ##args)
 #else

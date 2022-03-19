@@ -19,13 +19,16 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "usart.h"
+#include "cmsis_os2.h"
+#include "common.h"
 
 /* USER CODE BEGIN 0 */
-
+#define UART_RX_MAX_LEN 128
 /* USER CODE END 0 */
 
 UART_HandleTypeDef huart2;
-
+static uint8_t rx_byte;
+static osMessageQueueId_t rx_queue;
 /* USART2 init function */
 
 void MX_USART2_UART_Init(void)
@@ -51,9 +54,14 @@ void MX_USART2_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USART2_Init 2 */
+  HAL_UART_Receive_IT(&huart2, &rx_byte, 1);
 
+  rx_queue = osMessageQueueNew(UART_RX_MAX_LEN, 1, NULL);
+  if (rx_queue == NULL) {
+      log_err("osMessageQueueNew failed\n");
+      Error_Handler();
+  }
   /* USER CODE END USART2_Init 2 */
-
 }
 
 void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
@@ -115,7 +123,39 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 }
 
 /* USER CODE BEGIN 1 */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    (void)osMessageQueuePut(rx_queue, &rx_byte, 0, 0);
+    HAL_UART_Receive_IT(huart, &rx_byte, 1);   //再开启接收中断
+}
 
+uint32_t read_uart2_rx_buffer(uint8_t *data, uint8_t len)
+{
+    uint8_t i;
+    int ret;
+
+    if (data == NULL || len > UART_RX_MAX_LEN) {
+        log_err("invalid param: %p, %d\n", data, len);
+        return 0;
+    }
+
+    if (rx_queue == NULL) {
+        log_err("rx queue not init\n");
+        return 0;
+    }
+
+    for (i = 0; i < len; i++) {
+        uint8_t byte;
+
+        ret = osMessageQueueGet(rx_queue, &byte, NULL, 0);
+        if (ret == osErrorResource) {
+            break;
+        }
+        data[i] = byte;
+    }
+
+    return i;
+}
 /* USER CODE END 1 */
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
