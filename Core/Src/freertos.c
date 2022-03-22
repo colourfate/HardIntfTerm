@@ -48,7 +48,7 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
   */
 void MX_FREERTOS_Init(void) {
     usb_task_handle = osThreadNew(usb_task, NULL, &usb_task_attributes);
-    test_case_init();
+    //test_case_init();
 }
 
 void usb_task(void *argument)
@@ -77,8 +77,8 @@ void usb_task(void *argument)
             break;
         }
         
-        //log_info("get packet: [cmd: %d, dir: %d, group: %d, pin: %d, len: %d, value: %d]\n", packet->cmd.bit.type,
-        //    packet->cmd.bit.dir, packet->gpio.bit.group, packet->gpio.bit.pin, packet->data_len, packet->data[0]);
+        log_info("get packet: [cmd: %d, dir: %d, group: %d, pin: %d, len: %d, value: %d]\n", packet->cmd.bit.type,
+            packet->cmd.bit.dir, packet->gpio.bit.group, packet->gpio.bit.pin, packet->data_len, packet->data[0]);
         ret = msg_parse_exec(packet);
         if (ret != USB_MSG_OK) {
             log_err("msg_parse_exec failed\n");
@@ -104,10 +104,5 @@ exit:
     /* USER CODE END led_task */
     while (1) {};
 }
-
-/* Private application code --------------------------------------------------*/
-/* USER CODE BEGIN Application */
-
-/* USER CODE END Application */
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

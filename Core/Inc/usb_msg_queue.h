@@ -44,8 +44,8 @@ typedef enum {
 
 typedef union {
     struct {
-        uint8_t type : 7;
         uint8_t dir : 1;
+        uint8_t type : 7;
     } bit;
 
     uint8_t data;
@@ -53,8 +53,8 @@ typedef union {
 
 typedef union {
     struct {
-        uint8_t group : 4;
         uint8_t pin : 4;
+        uint8_t group : 4;
     } bit;
 
     uint8_t data;
@@ -69,6 +69,7 @@ typedef struct {
 
 int usb_msg_queue_init(void);
 int usb_msg_queue_deinit(void);
+int usb_msg_queue_rawput(uint8_t *data, uint8_t len);
 int usb_msg_queue_put(const cmd_packet *packet);
 int usb_msg_queue_block_get(cmd_packet *packet);
 

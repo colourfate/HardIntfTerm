@@ -50,6 +50,34 @@ int usb_msg_queue_deinit(void)
     return USB_MSG_OK;
 }
 
+int usb_msg_queue_rawput(uint8_t *data, uint8_t len)
+{
+    uint8_t i;
+    uint32_t ret;
+
+    if (data == NULL) {
+        log_err("data is NULL\n");
+        return USB_MSG_FAILED;
+    }
+
+    if (len > INTF_PROTOCOL_PACKET_MAX) {
+        log_err("len is too large: %d\n", len);
+        return USB_MSG_FAILED;
+    }
+
+    for (i = 0; i < len; i++) {
+        printf("0x%x ", data[i]);
+        ret = osMessageQueuePut(g_termianl_panel.cmd_queue, &data[i], 0, 0);
+        if (ret != osOK) {
+            log_err("put data failed\n");
+            return USB_MSG_FAILED;
+        }
+    }
+    printf("\n");
+
+    return USB_MSG_OK;
+}
+
 int usb_msg_queue_put(const cmd_packet *packet)
 {
     osStatus_t ret;
