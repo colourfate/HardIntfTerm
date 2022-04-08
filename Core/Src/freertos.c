@@ -47,25 +47,25 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
   * @retval None
   */
 void MX_FREERTOS_Init(void) {
+    MX_USB_DEVICE_Init();
+    log_err("usb init ok\n");
     usb_task_handle = osThreadNew(usb_task, NULL, &usb_task_attributes);
-    //test_case_init();
 }
 
+uint8_t buffer[1024] = {1};
 void usb_task(void *argument)
 {
     int ret;
     cmd_packet *packet;
 
-    MX_USB_DEVICE_Init();
-    log_err("usb init ok\n");
-
     packet = malloc(INTF_PROTOCOL_PACKET_MAX);
-
     ret = usb_msg_queue_init();
     if (ret < 0) {
         log_err("usb_msg_queue_init failed\n");
         goto exit;
     }
+
+    //test_case_init();
 
     for(;;)
     {
@@ -77,8 +77,8 @@ void usb_task(void *argument)
             break;
         }
         
-        log_info("get packet: [cmd: %d, dir: %d, group: %d, pin: %d, len: %d, value: %d]\n", packet->cmd.bit.type,
-            packet->cmd.bit.dir, packet->gpio.bit.group, packet->gpio.bit.pin, packet->data_len, packet->data[0]);
+        //log_info("get packet: [cmd: %d, dir: %d, group: %d, pin: %d, len: %d, value: %d]\n", packet->cmd.bit.type,
+        //    packet->cmd.bit.dir, packet->gpio.bit.group, packet->gpio.bit.pin, packet->data_len, packet->data[0]);
         ret = msg_parse_exec(packet);
         if (ret != USB_MSG_OK) {
             log_err("msg_parse_exec failed\n");
@@ -87,15 +87,22 @@ void usb_task(void *argument)
 
         if (packet->cmd.bit.dir == INTF_CMD_DIR_IN) {
             int i;
-            log_info("put packet: [cmd: %d, dir: %d, group: %d, pin: %d, len: %d, value: %d]\n", packet->cmd.bit.type,
-                packet->cmd.bit.dir, packet->gpio.bit.group, packet->gpio.bit.pin, packet->data_len, packet->data[0]);
+            //log_info("put packet: [cmd: %d, dir: %d, group: %d, pin: %d, len: %d, value: %d]\n", packet->cmd.bit.type,
+            //    packet->cmd.bit.dir, packet->gpio.bit.group, packet->gpio.bit.pin, packet->data_len, packet->data[0]);
+
+            /*
             for (i = 0; i < packet->data_len; i++) {
-                printf("%c", packet->data[i]);
+                printf("%c(%d) ", packet->data[i], i);
             }
             printf("\n");
+            */
+            //;
+            
+            do {
+                ret = USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, (uint8_t *)packet,
+                    sizeof(cmd_packet) + packet->data_len - 1);
+            } while (ret == USBD_BUSY);
         }
-        /* TODO: parse, exec and report result */
-        //USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, g_usb_receive_buffer, sizeof(g_usb_receive_buffer));
     }
 
 exit:

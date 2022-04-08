@@ -66,14 +66,14 @@ int usb_msg_queue_rawput(uint8_t *data, uint8_t len)
     }
 
     for (i = 0; i < len; i++) {
-        printf("0x%x ", data[i]);
+        //printf("0x%x ", data[i]);
         ret = osMessageQueuePut(g_termianl_panel.cmd_queue, &data[i], 0, 0);
         if (ret != osOK) {
             log_err("put data failed\n");
             return USB_MSG_FAILED;
         }
     }
-    printf("\n");
+    //printf("\n");
 
     return USB_MSG_OK;
 }
