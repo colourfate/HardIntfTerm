@@ -154,5 +154,5 @@ void test_case_init(void)
     //osThreadNew(serail_in_task, NULL, &serail_in_task_attributes);
     //osThreadNew(serail_out_task, NULL, &serail_out_task_attributes);
     //osThreadNew(gpio_task, NULL, &gpio_task_attributes);
-    osThreadNew(pack2_task, NULL, &packet2_task_attributes);
+    //osThreadNew(pack2_task, NULL, &packet2_task_attributes);
 }

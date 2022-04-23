@@ -1,9 +1,10 @@
 #ifndef _INTF_CMD_BRIDGE_
 #define _INTF_CMD_BRIDGE_
 
-#include "usbd_customhid.h"
+#include "common.h"
+#include "usbd_cdc.h"
 
-#define INTF_PROTOCOL_PACKET_MAX CUSTOM_HID_EPOUT_SIZE
+#define INTF_PROTOCOL_PACKET_MAX CDC_DATA_FS_MAX_PACKET_SIZE
 #define CHIP_PIN_MAX 16
 
 enum {

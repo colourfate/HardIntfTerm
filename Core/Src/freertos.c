@@ -23,7 +23,7 @@
 #include "task.h"
 #include "main.h"
 #include "cmsis_os2.h"
-#include "usbd_customhid.h"
+#include "usbd_cdc.h"
 #include "usb_msg_queue.h"
 #include "common.h"
 #include "usart.h"
@@ -65,7 +65,7 @@ void usb_task(void *argument)
         goto exit;
     }
 
-    //test_case_init();
+    test_case_init();
 
     for(;;)
     {
@@ -77,8 +77,8 @@ void usb_task(void *argument)
             break;
         }
         
-        //log_info("get packet: [cmd: %d, dir: %d, group: %d, pin: %d, len: %d, value: %d]\n", packet->cmd.bit.type,
-        //    packet->cmd.bit.dir, packet->gpio.bit.group, packet->gpio.bit.pin, packet->data_len, packet->data[0]);
+        log_info("get packet: [cmd: %d, dir: %d, group: %d, pin: %d, len: %d, value: %d]\n", packet->cmd.bit.type,
+            packet->cmd.bit.dir, packet->gpio.bit.group, packet->gpio.bit.pin, packet->data_len, packet->data[0]);
         ret = msg_parse_exec(packet);
         if (ret != USB_MSG_OK) {
             log_err("msg_parse_exec failed\n");
@@ -87,8 +87,8 @@ void usb_task(void *argument)
 
         if (packet->cmd.bit.dir == INTF_CMD_DIR_IN) {
             int i;
-            //log_info("put packet: [cmd: %d, dir: %d, group: %d, pin: %d, len: %d, value: %d]\n", packet->cmd.bit.type,
-            //    packet->cmd.bit.dir, packet->gpio.bit.group, packet->gpio.bit.pin, packet->data_len, packet->data[0]);
+            log_info("put packet: [cmd: %d, dir: %d, group: %d, pin: %d, len: %d, value: %d]\n", packet->cmd.bit.type,
+                packet->cmd.bit.dir, packet->gpio.bit.group, packet->gpio.bit.pin, packet->data_len, packet->data[0]);
 
             /*
             for (i = 0; i < packet->data_len; i++) {
@@ -99,8 +99,7 @@ void usb_task(void *argument)
             //;
             
             do {
-                ret = USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, (uint8_t *)packet,
-                    sizeof(cmd_packet) + packet->data_len - 1);
+                ret = CDC_Transmit_FS((uint8_t *)packet, sizeof(cmd_packet) + packet->data_len - 1);
             } while (ret == USBD_BUSY);
         }
     }
