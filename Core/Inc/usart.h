@@ -38,7 +38,8 @@ extern UART_HandleTypeDef huart2;
 /* USER CODE END Private defines */
 
 void MX_USART2_UART_Init(void);
-uint32_t read_uart2_rx_buffer(uint8_t *data, uint8_t len);
+uint32_t read_uart_rx_buffer(uint8_t num, uint8_t *data, uint8_t len);
+int uart_transmit(uint8_t num, uint8_t *data, int len);
 
 /* USER CODE BEGIN Prototypes */
 

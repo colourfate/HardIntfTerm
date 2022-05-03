@@ -22,46 +22,45 @@
 #include "cmsis_os2.h"
 #include "common.h"
 
-/* USER CODE BEGIN 0 */
 #define UART_RX_MAX_LEN 128
-/* USER CODE END 0 */
+#ifdef STM32F411xE
+#define MAX_UART_PORT_NUM 2
+#else
+#define MAX_UART_PORT_NUM 0
+#endif
 
 UART_HandleTypeDef huart2;
-static uint8_t rx_byte;
-static osMessageQueueId_t rx_queue;
-/* USART2 init function */
+
+static uint8_t g_rx_byte;
+static osMessageQueueId_t g_rx_queue[MAX_UART_PORT_NUM];
+
+// FIXME: 此次整改
+static UART_HandleTypeDef *g_uart_tab[MAX_UART_PORT_NUM] = {
+    NULL, &huart2
+};
 
 void MX_USART2_UART_Init(void)
 {
+    huart2.Instance = USART2;
+    huart2.Init.BaudRate = 115200;
+    huart2.Init.WordLength = UART_WORDLENGTH_8B;
+    huart2.Init.StopBits = UART_STOPBITS_1;
+    huart2.Init.Parity = UART_PARITY_NONE;
+    huart2.Init.Mode = UART_MODE_TX_RX;
+    huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+    if (HAL_UART_Init(&huart2) != HAL_OK)
+    {
+        Error_Handler();
+    }
 
-  /* USER CODE BEGIN USART2_Init 0 */
+    HAL_UART_Receive_IT(&huart2, &g_rx_byte, 1);
 
-  /* USER CODE END USART2_Init 0 */
-
-  /* USER CODE BEGIN USART2_Init 1 */
-
-  /* USER CODE END USART2_Init 1 */
-  huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
-  huart2.Init.WordLength = UART_WORDLENGTH_8B;
-  huart2.Init.StopBits = UART_STOPBITS_1;
-  huart2.Init.Parity = UART_PARITY_NONE;
-  huart2.Init.Mode = UART_MODE_TX_RX;
-  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART2_Init 2 */
-  HAL_UART_Receive_IT(&huart2, &rx_byte, 1);
-
-  rx_queue = osMessageQueueNew(UART_RX_MAX_LEN, 1, NULL);
-  if (rx_queue == NULL) {
-      log_err("osMessageQueueNew failed\n");
-      Error_Handler();
-  }
-  /* USER CODE END USART2_Init 2 */
+    g_rx_queue[1] = osMessageQueueNew(UART_RX_MAX_LEN, 1, NULL);
+    if (g_rx_queue[1] == NULL) {
+        log_err("osMessageQueueNew failed\n");
+        Error_Handler();
+    }
 }
 
 void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
@@ -70,12 +69,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   if(uartHandle->Instance==USART2)
   {
-  /* USER CODE BEGIN USART2_MspInit 0 */
-
-  /* USER CODE END USART2_MspInit 0 */
-    /* USART2 clock enable */
     __HAL_RCC_USART2_CLK_ENABLE();
-
     __HAL_RCC_GPIOA_CLK_ENABLE();
     /**USART2 GPIO Configuration
     PA2     ------> USART2_TX
@@ -91,9 +85,6 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
     /* USART2 interrupt Init */
     HAL_NVIC_SetPriority(USART2_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(USART2_IRQn);
-  /* USER CODE BEGIN USART2_MspInit 1 */
-
-  /* USER CODE END USART2_MspInit 1 */
   }
 }
 
@@ -102,10 +93,6 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 
   if(uartHandle->Instance==USART2)
   {
-  /* USER CODE BEGIN USART2_MspDeInit 0 */
-
-  /* USER CODE END USART2_MspDeInit 0 */
-    /* Peripheral clock disable */
     __HAL_RCC_USART2_CLK_DISABLE();
 
     /**USART2 GPIO Configuration
@@ -113,33 +100,45 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
     PA3     ------> USART2_RX
     */
     HAL_GPIO_DeInit(GPIOA, GPIO_PIN_2|GPIO_PIN_3);
-
-    /* USART2 interrupt Deinit */
     HAL_NVIC_DisableIRQ(USART2_IRQn);
-  /* USER CODE BEGIN USART2_MspDeInit 1 */
-
-  /* USER CODE END USART2_MspDeInit 1 */
   }
 }
 
 /* USER CODE BEGIN 1 */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    (void)osMessageQueuePut(rx_queue, &rx_byte, 0, 0);
-    HAL_UART_Receive_IT(huart, &rx_byte, 1);   //再开启接收中断
+    (void)osMessageQueuePut(g_rx_queue, &g_rx_byte, 0, 0);
+    HAL_UART_Receive_IT(huart, &g_rx_byte, 1);
 }
 
-uint32_t read_uart2_rx_buffer(uint8_t *data, uint8_t len)
+int uart_transmit(uint8_t num, uint8_t *data, int len)
+{
+    if (num >= count_of(g_uart_tab)) {
+        log_err("Not support uart num: %d\n", num);
+        return osError;
+    }
+
+    HAL_UART_Transmit(g_uart_tab[num], data, len, 0xFFFF);
+
+    return osOK;
+}
+
+uint32_t read_uart_rx_buffer(uint8_t num, uint8_t *data, uint8_t len)
 {
     uint8_t i;
     int ret;
+
+    if (num >= count_of(g_rx_queue)) {
+        log_err("Not support uart num: %d\n", num);
+        return osError;
+    }
 
     if (data == NULL || len > UART_RX_MAX_LEN) {
         log_err("invalid param: %p, %d\n", data, len);
         return 0;
     }
 
-    if (rx_queue == NULL) {
+    if (g_rx_queue == NULL) {
         log_err("rx queue not init\n");
         return 0;
     }
@@ -147,7 +146,7 @@ uint32_t read_uart2_rx_buffer(uint8_t *data, uint8_t len)
     for (i = 0; i < len; i++) {
         uint8_t byte;
 
-        ret = osMessageQueueGet(rx_queue, &byte, NULL, 0);
+        ret = osMessageQueueGet(g_rx_queue[num], &byte, NULL, 0);
         if (ret == osErrorResource) {
             break;
         }
@@ -156,6 +155,4 @@ uint32_t read_uart2_rx_buffer(uint8_t *data, uint8_t len)
 
     return i;
 }
-/* USER CODE END 1 */
-
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

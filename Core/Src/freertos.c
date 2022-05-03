@@ -27,6 +27,7 @@
 #include "usb_msg_queue.h"
 #include "common.h"
 #include "usart.h"
+#include "port_hal.h"
 
 osThreadId_t usb_task_handle;
 const osThreadAttr_t usb_task_attributes = {
@@ -71,32 +72,34 @@ void usb_task(void *argument)
     {
         int ret;
 
+        log_err("\n");
         ret = usb_msg_queue_block_get(packet);
         if (ret == USB_MSG_FAILED) {
             log_err("usb_msg_queue_get failed\n");
             break;
         }
         
-        log_info("get packet: [cmd: %d, dir: %d, group: %d, pin: %d, len: %d, value: %d]\n", packet->cmd.bit.type,
-            packet->cmd.bit.dir, packet->gpio.bit.group, packet->gpio.bit.pin, packet->data_len, packet->data[0]);
+        log_info("get packet: [cmd: %d, dir: %d, mode: %d, group: %d, pin: %d, len: %d, value: %d]\n",
+            packet->cmd.bit.type, packet->cmd.bit.dir, packet->cmd.bit.mode,
+            packet->gpio.bit.group, packet->gpio.bit.pin,
+            packet->data_len, packet->data[0]);
+
         ret = msg_parse_exec(packet);
         if (ret != USB_MSG_OK) {
             log_err("msg_parse_exec failed\n");
             continue;
         }
 
-        if (packet->cmd.bit.dir == INTF_CMD_DIR_IN) {
+        if (packet->cmd.bit.mode == INTF_CMD_MODE_CFG || packet->cmd.bit.dir == PORT_DIR_IN) {
             int i;
-            log_info("put packet: [cmd: %d, dir: %d, group: %d, pin: %d, len: %d, value: %d]\n", packet->cmd.bit.type,
-                packet->cmd.bit.dir, packet->gpio.bit.group, packet->gpio.bit.pin, packet->data_len, packet->data[0]);
+            log_info("put packet: [cmd: %d, dir: %d, mode: %d, group: %d, pin: %d, len: %d, value: %d]\n",
+                packet->cmd.bit.type, packet->cmd.bit.dir, packet->cmd.bit.mode,
+                packet->gpio.bit.group, packet->gpio.bit.pin,
+                packet->data_len, packet->data[0]);
 
-            /*
             for (i = 0; i < packet->data_len; i++) {
-                printf("%c(%d) ", packet->data[i], i);
+                log_info_raw("%c(%d) ", packet->data[i], i);
             }
-            printf("\n");
-            */
-            //;
             
             do {
                 ret = CDC_Transmit_FS((uint8_t *)packet, sizeof(cmd_packet) + packet->data_len - 1);

@@ -14,39 +14,16 @@ enum {
 };
 
 typedef enum {
-    INTF_CMD_TYPE_GPIO = 0,
-    INTF_CMD_TYPE_PWM,
-    INTF_CMD_TYPE_ADC,
-    INTF_CMD_TYPE_SERIAL,
-    INTF_CMD_TYPE_I2C,
-    INTF_CMD_TYPE_SPI,
-    INTF_CMD_TYPE_CAN,
-    INTF_CMD_TYPE_MAX
-} intf_cmd_type;
-
-typedef enum {
-    INTF_CMD_DIR_IN = 0,
-    INTF_CMD_DIR_OUT,
-    INTF_CMD_DIR_MAX
-} intf_cmd_dir;
-
-typedef enum {
-    CHIP_GPIOA = 0,
-    CHIP_GPIOB,
-    CHIP_GPIOC,
-    CHIP_GPIOD,
-    CHIP_GPIOE,
-    CHIP_GPIOF,
-    CHIP_GPIOG,
-    CHIP_GPIOH,
-    CHIP_MUL_FUNC,
-    CHIP_GPIO_MAX
-} chip_gpio_group;
+    INTF_CMD_MODE_CTRL = 0,
+    INTF_CMD_MODE_CFG,
+    INTF_CMD_MODE_MAX
+} intf_cmd_mode;
 
 typedef union {
     struct {
         uint8_t dir : 1;
-        uint8_t type : 7;
+        uint8_t mode : 2;
+        uint8_t type : 5;
     } bit;
 
     uint8_t data;

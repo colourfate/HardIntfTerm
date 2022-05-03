@@ -3,10 +3,10 @@
 #include "common.h"
 #include "main.h"
 #include "usart.h"
+#include "port_hal.h"
 
 /* 
- * INIT --> CONFIG --> CMD <--> DATA --> EXIT
- *                      |---------------->|
+ * INIT --> CONFIG --> EXEC --> INIT
  */
 /*
 typydef enum {
@@ -34,6 +34,8 @@ int usb_msg_queue_init(void)
         return USB_MSG_FAILED;
     }
 
+    port_hal_init();
+
     return USB_MSG_OK;
 }
 
@@ -46,6 +48,8 @@ int usb_msg_queue_deinit(void)
 
     (void)osMessageQueueDelete(g_termianl_panel.cmd_queue);
     g_termianl_panel.cmd_queue = NULL;
+
+    port_hal_deinit();
 
     return USB_MSG_OK;
 }
@@ -147,121 +151,90 @@ int usb_msg_queue_block_get(cmd_packet *packet)
             return USB_MSG_FAILED;
         }
     }
-
+    
     return USB_MSG_OK;
 }
 
-/* For stm32f4x1 */
-static GPIO_TypeDef *get_gpio_type_define(chip_gpio_group gpio_group)
-{
-    GPIO_TypeDef *gpio_type;
-
-    switch (gpio_group) {
-        case CHIP_GPIOA:
-            gpio_type = GPIOA;
-            break;
-        case CHIP_GPIOB:
-            gpio_type = GPIOB;
-            break;
-        case CHIP_GPIOC:
-            gpio_type = GPIOC;
-            break;
-        case CHIP_GPIOH:
-            gpio_type = GPIOH;
-            break;
-        default:
-            log_err("Not support gpio: %d\n", gpio_group);
-            gpio_type = NULL;
-    }
-
-    return gpio_type;
-}
-
-/* For stm32f4x1 */
-static inline uint32_t get_gpio_pin(uint32_t pin_num)
-{
-    if (pin_num > 15) {
-        log_err("Not support gpio pin: %lu\n", pin_num);
-        return 0xffffffff;
-    } 
-
-    return (1 << pin_num);
-}
-
 static int gpio_read_exec_func(cmd_packet *packet)
-{
-    GPIO_TypeDef *gpio_type = get_gpio_type_define(packet->gpio.bit.group);
-    uint32_t gpio_pin = get_gpio_pin(packet->gpio.bit.pin);
+{    
+    int ret;
 
-    if (gpio_type == NULL || gpio_pin == 0xffffffff) {
-        return USB_MSG_FAILED;
-    }
-
+    log_info("\n");
     if (packet->data_len != 1) {
         log_err("Invalid param len: %d\n", packet->data_len);
         return USB_MSG_FAILED;
     }
 
-    packet->data[0] = HAL_GPIO_ReadPin(gpio_type, gpio_pin);
+    ret = port_hal_gpio_read(packet->gpio.bit.group, packet->gpio.bit.pin, &packet->data[0]);
+    if (ret != osOK) {
+        log_err("port_hal_gpio_read failed\n");
+        return USB_MSG_FAILED;
+    }
 
     return USB_MSG_OK;
 }
 
 static int gpio_write_exec_func(cmd_packet *packet)
 {
-    GPIO_TypeDef *gpio_type = get_gpio_type_define(packet->gpio.bit.group);
-    uint32_t gpio_pin = get_gpio_pin(packet->gpio.bit.pin);
+    int ret;
 
-    if (gpio_type == NULL || gpio_pin == 0xffffffff) {
-        return USB_MSG_FAILED;
-    }
-
+    log_info("\n");
     if (packet->data[0] != 0 && packet->data[0] != 1) {
         log_err("Invalid param data: %d\n", packet->data[0]);
         return USB_MSG_FAILED;
     }
 
-    HAL_GPIO_WritePin(gpio_type, gpio_pin, packet->data[0]);
+    ret = port_hal_gpio_write(packet->gpio.bit.group, packet->gpio.bit.pin, packet->data[0]);
+    if (ret != osOK) {
+        log_err("port_hal_gpio_read failed\n");
+        return USB_MSG_FAILED;
+    }
 
     return USB_MSG_OK;
 }
 
 static int serial_in_exec_func(cmd_packet *packet)
 {
-    if (packet->gpio.bit.pin > 2) {
-        log_err("Not serial num: %d\n", packet->gpio.bit.pin);
-        return USB_MSG_FAILED;
-    }
-
-    packet->data_len = read_uart2_rx_buffer(&packet->data[0], packet->data_len);
-
-    return USB_MSG_OK;
+    log_info("\n");
+    return port_hal_serial_in(packet->gpio.bit.group, packet->gpio.bit.pin, packet->data, packet->data_len);
 }
 
 static int serial_out_exec_func(cmd_packet *packet)
 {
-    if (packet->gpio.bit.pin > 2) {
-        log_err("Not serial num: %d\n", packet->gpio.bit.pin);
-        return USB_MSG_FAILED;
-    }
+    log_info("\n");
+    return port_hal_serial_out(packet->gpio.bit.group, packet->gpio.bit.pin, packet->data, packet->data_len);
+}
 
-    /* Only uart2 in the chip */
-    HAL_UART_Transmit(&huart2, &packet->data[0], packet->data_len, 0xFFFF);
+static int gpio_cfg_exec_func(cmd_packet *packet)
+{
+    log_info("\n");
+    return port_register(packet->gpio.bit.group, packet->gpio.bit.pin, 
+        packet->cmd.bit.type, packet->cmd.bit.dir, packet->data);
+}
 
-    return USB_MSG_OK;
+static int serial_cfg_exec_func(cmd_packet *packet)
+{
+    log_info("\n");
+    return port_register(packet->gpio.bit.group, packet->gpio.bit.pin, 
+        packet->cmd.bit.type, packet->cmd.bit.dir, packet->data);
 }
 
 typedef struct {
-    intf_cmd_type cmd_type;
-    intf_cmd_dir cmd_dir;
+    port_type cmd_type;
+    intf_cmd_mode cmd_mode;
+    port_dir cmd_dir;
     int (*entry)(cmd_packet *packet);
 } cmd_exec_unit;
 
 static const cmd_exec_unit g_cmd_exec_tab[] = {
-    { INTF_CMD_TYPE_GPIO, INTF_CMD_DIR_IN, gpio_read_exec_func },
-    { INTF_CMD_TYPE_GPIO, INTF_CMD_DIR_OUT, gpio_write_exec_func },
-    { INTF_CMD_TYPE_SERIAL, INTF_CMD_DIR_IN, serial_in_exec_func },
-    { INTF_CMD_TYPE_SERIAL, INTF_CMD_DIR_OUT, serial_out_exec_func },
+    /* control function */
+    { PORT_TYPE_GPIO, INTF_CMD_MODE_CTRL, PORT_DIR_IN, gpio_read_exec_func },
+    { PORT_TYPE_GPIO, INTF_CMD_MODE_CTRL, PORT_DIR_OUT, gpio_write_exec_func },
+    { PORT_TYPE_SERIAL, INTF_CMD_MODE_CTRL, PORT_DIR_IN, serial_in_exec_func },
+    { PORT_TYPE_SERIAL, INTF_CMD_MODE_CTRL, PORT_DIR_OUT, serial_out_exec_func },
+    /* config function */
+    { PORT_TYPE_GPIO, INTF_CMD_MODE_CFG, PORT_DIR_MAX, gpio_cfg_exec_func },
+    { PORT_TYPE_SERIAL, INTF_CMD_MODE_CFG, PORT_DIR_MAX, serial_cfg_exec_func },
 };
 
 int msg_parse_exec(cmd_packet *packet)
@@ -274,20 +247,22 @@ int msg_parse_exec(cmd_packet *packet)
         return USB_MSG_FAILED;
     }
 
-    if (packet->data_len > INTF_PROTOCOL_PACKET_MAX - sizeof(cmd_packet) - 1) {
+    if (packet->data_len > INTF_PROTOCOL_PACKET_MAX - sizeof(cmd_packet) + 1) {
         log_err("packet is too large: %d\n", packet->data_len);
         return USB_MSG_FAILED;
     }
 
     for (i = 0; i < count_of(g_cmd_exec_tab); i++) {
-        if (g_cmd_exec_tab[i].cmd_type == packet->cmd.bit.type && g_cmd_exec_tab[i].cmd_dir == packet->cmd.bit.dir) {
+        if (g_cmd_exec_tab[i].cmd_type == packet->cmd.bit.type && g_cmd_exec_tab[i].cmd_mode == packet->cmd.bit.mode &&
+            (g_cmd_exec_tab[i].cmd_dir == PORT_DIR_MAX || g_cmd_exec_tab[i].cmd_dir == packet->cmd.bit.dir)) {
             ret = g_cmd_exec_tab[i].entry(packet);
             break;
         }
     }
 
     if (ret != USB_MSG_OK) {
-        log_err("Cmd exec failed, type: %d, dir: %d\n", packet->cmd.bit.type, packet->cmd.bit.dir);
+        log_err("Cmd exec failed, type: %d, mode: %d, dir: %d\n", packet->cmd.bit.type, packet->cmd.bit.mode,
+            packet->cmd.bit.dir);
         return USB_MSG_FAILED;
     }
 
