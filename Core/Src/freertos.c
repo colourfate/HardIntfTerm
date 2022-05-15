@@ -23,7 +23,7 @@
 #include "task.h"
 #include "main.h"
 #include "cmsis_os2.h"
-#include "usbd_cdc.h"
+#include "usbd_cdc_if.h"
 #include "usb_msg_queue.h"
 #include "common.h"
 #include "usart.h"
@@ -53,7 +53,6 @@ void MX_FREERTOS_Init(void) {
     usb_task_handle = osThreadNew(usb_task, NULL, &usb_task_attributes);
 }
 
-uint8_t buffer[1024] = {1};
 void usb_task(void *argument)
 {
     int ret;
@@ -72,7 +71,6 @@ void usb_task(void *argument)
     {
         int ret;
 
-        log_err("\n");
         ret = usb_msg_queue_block_get(packet);
         if (ret == USB_MSG_FAILED) {
             log_err("usb_msg_queue_get failed\n");

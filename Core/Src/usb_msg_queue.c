@@ -157,7 +157,7 @@ int usb_msg_queue_block_get(cmd_packet *packet)
 
 static int gpio_read_exec_func(cmd_packet *packet)
 {    
-    int ret;
+    int ret, value;
 
     log_info("\n");
     if (packet->data_len != 1) {
@@ -165,11 +165,13 @@ static int gpio_read_exec_func(cmd_packet *packet)
         return USB_MSG_FAILED;
     }
 
-    ret = port_hal_gpio_read(packet->gpio.bit.group, packet->gpio.bit.pin, &packet->data[0]);
+    ret = port_hal_gpio_read(packet->gpio.bit.group, packet->gpio.bit.pin, &value);
     if (ret != osOK) {
         log_err("port_hal_gpio_read failed\n");
         return USB_MSG_FAILED;
     }
+
+    packet->data[0] = (uint8_t)value;
 
     return USB_MSG_OK;
 }
@@ -196,7 +198,7 @@ static int gpio_write_exec_func(cmd_packet *packet)
 static int serial_in_exec_func(cmd_packet *packet)
 {
     log_info("\n");
-    return port_hal_serial_in(packet->gpio.bit.group, packet->gpio.bit.pin, packet->data, packet->data_len);
+    return port_hal_serial_in(packet->gpio.bit.group, packet->gpio.bit.pin, packet->data, &packet->data_len);;
 }
 
 static int serial_out_exec_func(cmd_packet *packet)

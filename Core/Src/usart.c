@@ -107,7 +107,7 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 /* USER CODE BEGIN 1 */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    (void)osMessageQueuePut(g_rx_queue, &g_rx_byte, 0, 0);
+    (void)osMessageQueuePut(g_rx_queue[1], &g_rx_byte, 0, 0);
     HAL_UART_Receive_IT(huart, &g_rx_byte, 1);
 }
 
@@ -138,7 +138,7 @@ uint32_t read_uart_rx_buffer(uint8_t num, uint8_t *data, uint8_t len)
         return 0;
     }
 
-    if (g_rx_queue == NULL) {
+    if (g_rx_queue[num] == NULL) {
         log_err("rx queue not init\n");
         return 0;
     }

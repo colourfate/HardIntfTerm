@@ -4,6 +4,8 @@
 #include "cmsis_os2.h"
 #include "FreeRTOS.h"
 #include "list.h"
+#include "usart.h"
+#include <stdbool.h>
 
 #define ATTR_LEN_MAX 64
 
@@ -101,7 +103,8 @@ int port_hal_deinit(void)
     return osOK;
 }
 
-static port_define *get_port_define(port_group group, uint8_t pin, port_type type, port_dir dir)
+static port_define *get_port_define(port_group group, uint8_t pin, port_type type, port_dir dir,
+    bool (*priv_cmp)(void *attr, uint8_t port_num))
 {
     uint8_t i;
 
@@ -114,8 +117,11 @@ static port_define *get_port_define(port_group group, uint8_t pin, port_type typ
         port_define *port_def;
 
         listGET_OWNER_OF_NEXT_ENTRY(port_def, &g_port_reg_tab);
-        if (group == PORT_MUL_FUNC || (port_def->group == group && port_def->pin == pin) &&
-            port_def->type == type && port_def->dir == dir) {
+        
+        if (port_def->group == group && port_def->pin == pin && port_def->type == type && port_def->dir == dir) {
+            return port_def;
+        } else if (group == PORT_MUL_FUNC && port_def->type == type && 
+            priv_cmp != NULL && priv_cmp(port_def->attr, pin)) {
             return port_def;
         }
     }
@@ -169,7 +175,7 @@ int port_hal_gpio_read(port_group group, uint8_t pin, int *value)
         return osError;
     }
 
-    port_def = get_port_define(group, pin, PORT_TYPE_GPIO, PORT_DIR_IN);
+    port_def = get_port_define(group, pin, PORT_TYPE_GPIO, PORT_DIR_IN, NULL);
     if (port_def == NULL) {
         log_err("port not register: %d %d\n", group, pin);
         return osError;
@@ -195,7 +201,7 @@ int port_hal_gpio_write(port_group group, uint8_t pin, int value)
         return osError;
     }
 
-    port_def = get_port_define(group, pin, PORT_TYPE_GPIO, PORT_DIR_OUT);
+    port_def = get_port_define(group, pin, PORT_TYPE_GPIO, PORT_DIR_OUT, NULL);
     if (port_def == NULL) {
         log_err("port not register: %d %d\n", group, pin);
         return osError;
@@ -206,9 +212,15 @@ int port_hal_gpio_write(port_group group, uint8_t pin, int value)
     return osOK;
 }
 
+static bool serial_config_compare(void *attr, uint8_t port_num)
+{
+    uart_config *config = (uart_config *)attr;
+    return config->uart_num == port_num;
+}
+
 int port_hal_serial_out(port_group group, uint8_t pin, uint8_t *data, uint8_t len)
 {
-    port_define *port_def = get_port_define(group, pin, PORT_TYPE_SERIAL, PORT_DIR_OUT);
+    port_define *port_def = get_port_define(group, pin, PORT_TYPE_SERIAL, PORT_DIR_OUT, serial_config_compare);
     uart_config *config;
 
     if (data == NULL) {
@@ -227,39 +239,35 @@ int port_hal_serial_out(port_group group, uint8_t pin, uint8_t *data, uint8_t le
     }
 
     config = (uart_config *)port_def->attr;
-    if (config->uart_num != pin) {
-        log_err("uart%d not register\n", pin);
-        return osError;
-    }
-
     return uart_transmit(config->uart_num - 1, data, len);
 }
 
-uint32_t port_hal_serial_in(port_group group, uint8_t pin, uint8_t *data, uint8_t len)
+int port_hal_serial_in(port_group group, uint8_t pin, uint8_t *data, uint8_t *len)
 {
-    port_define *port_def = get_port_define(group, pin, PORT_TYPE_SERIAL, PORT_DIR_IN);
+    port_define *port_def = get_port_define(group, pin, PORT_TYPE_SERIAL, PORT_DIR_IN, serial_config_compare);
     uart_config *config;
 
-    if (data == NULL) {
+    if (data == NULL || len == NULL) {
         log_err("invalid param\n");
-        return osError;
+        goto exit;
     }
 
     if (group != PORT_MUL_FUNC) {
         log_err("invalid port group: %d\n", group);
-        return 0;
+        goto exit;
     }
 
     if (port_def == NULL) {
         log_err("port not register: %d %d\n", group, pin);
-        return 0;
+        goto exit;
     }
 
     config = (uart_config *)port_def->attr;
-    if (config->uart_num != pin) {
-        log_err("uart%d not register\n", pin);
-        return 0;
-    }
+    *len = read_uart_rx_buffer(config->uart_num - 1, data, *len);
 
-    return read_uart_rx_buffer(config->uart_num - 1, data, len);
+    return osOK;
+
+exit:
+    *len = 0;
+    return osError;
 }

@@ -88,7 +88,10 @@ typedef struct {
 
 void port_hal_init(void);
 int port_hal_deinit(void);
+int port_register(port_group group, uint8_t pin, port_type type, port_dir dir, void *attr);
 int port_hal_gpio_read(port_group group, uint8_t pin, int *value);
 int port_hal_gpio_write(port_group group, uint8_t pin, int value);
+int port_hal_serial_out(port_group group, uint8_t pin, uint8_t *data, uint8_t len);
+int port_hal_serial_in(port_group group, uint8_t pin, uint8_t *data, uint8_t *len);
 
 #endif
