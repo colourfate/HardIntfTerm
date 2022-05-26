@@ -27,23 +27,9 @@ extern "C" {
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
-/* USER CODE BEGIN Includes */
-
-/* USER CODE END Includes */
-
-extern UART_HandleTypeDef huart2;
-
-/* USER CODE BEGIN Private defines */
-
-/* USER CODE END Private defines */
-
-void MX_USART2_UART_Init(void);
+int serial_init(int uart_num, UART_InitTypeDef *hal_uart_init);
 uint32_t read_uart_rx_buffer(uint8_t num, uint8_t *data, uint8_t len);
 int uart_transmit(uint8_t num, uint8_t *data, int len);
-
-/* USER CODE BEGIN Prototypes */
-
-/* USER CODE END Prototypes */
 
 #ifdef __cplusplus
 }

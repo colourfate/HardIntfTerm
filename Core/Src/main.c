@@ -23,6 +23,7 @@
 #include "usart.h"
 #include "usb_device.h"
 #include "gpio.h"
+#include "usart.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -66,7 +67,8 @@ void MX_FREERTOS_Init(void);
 
 PUTCHAR_PROTOTYPE
 {
-    HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, 0xFFFF);
+    //HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, 0xFFFF);
+    uart_transmit(2, (uint8_t *)&ch, 1);
     return ch;
 }
 
@@ -90,49 +92,26 @@ int _write(int file, char *ptr, int len)
   */
 int main(void)
 {
-  /* USER CODE BEGIN 1 */
+    UART_InitTypeDef uart2_init;
 
-  /* USER CODE END 1 */
+    HAL_Init();
+    SystemClock_Config();
+    MX_GPIO_Init();
+    //MX_USART2_UART_Init();
+    uart2_init.BaudRate = 115200;
+    uart2_init.WordLength = UART_WORDLENGTH_8B;
+    uart2_init.StopBits = UART_STOPBITS_1;
+    uart2_init.Parity = UART_PARITY_NONE;
+    uart2_init.Mode = UART_MODE_TX_RX;
+    uart2_init.HwFlowCtl = UART_HWCONTROL_NONE;
+    uart2_init.OverSampling = UART_OVERSAMPLING_16;
+    serial_init(2, &uart2_init);
 
-  /* MCU Configuration--------------------------------------------------------*/
+    osKernelInitialize();  /* Call init function for freertos objects (in freertos.c) */
+    MX_FREERTOS_Init();
+    osKernelStart();
 
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
-
-  /* USER CODE BEGIN Init */
-
-  /* USER CODE END Init */
-
-  /* Configure the system clock */
-  SystemClock_Config();
-
-  /* USER CODE BEGIN SysInit */
-
-  /* USER CODE END SysInit */
-
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_USART2_UART_Init();
-  /* USER CODE BEGIN 2 */
-
-  /* USER CODE END 2 */
-
-  /* Init scheduler */
-  osKernelInitialize();  /* Call init function for freertos objects (in freertos.c) */
-  MX_FREERTOS_Init();
-  /* Start scheduler */
-  osKernelStart();
-
-  /* We should never get here as control is now taken by the scheduler */
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-    while (1)
-    {
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
-    }
-  /* USER CODE END 3 */
+    while (1);
 }
 
 /**

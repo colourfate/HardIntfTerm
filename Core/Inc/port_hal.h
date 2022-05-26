@@ -3,6 +3,14 @@
 
 #include "common.h"
 
+// TODO: 名称整改
+enum {
+    USB_MSG_OK = 0,
+    USB_MSG_RETRY,
+    USB_MSG_REPEAT_OPT,
+    USB_MSG_FAILED = -1
+};
+
 typedef enum {
     PORT_TYPE_GPIO = 0,
     PORT_TYPE_PWM,
@@ -53,25 +61,29 @@ typedef enum {
 
 typedef enum {
     PORT_UART_WORT_LEN_8 = 0,
-    PORT_UART_WORT_LEN_9
+    PORT_UART_WORT_LEN_9,
+    PORT_UART_WORT_LEN_MAX
 } port_uart_word_len;
 
 typedef enum {
     PORT_UART_STOP_BIT_1 = 0,
-    PORT_UART_STOP_BIT_2
+    PORT_UART_STOP_BIT_2,
+    PORT_UART_STOP_BIT_MAX
 } port_uart_stop_bit;
 
 typedef enum {
     PORT_UART_PARITY_NONE = 0,
     PORT_UART_PARITY_EVEN,
-    PORT_UART_PARITY_ODD
+    PORT_UART_PARITY_ODD,
+    PORT_UART_PARITY_MAX
 } port_uart_parity;
 
 typedef enum {
     PORT_UART_HWCTL_NONE = 0,
     PORT_UART_HWCTL_RTS,
     PORT_UART_HWCTL_CTS,
-    PORT_UART_HWCTL_RTS_CTS
+    PORT_UART_HWCTL_RTS_CTS,
+    PORT_UART_HWCTL_MAX
 } port_uart_hwctl;
 
 #define UART_NUM_MAX 8
@@ -86,12 +98,26 @@ typedef struct {
     uint8_t hwctl : 2;
 } uart_config;
 
+typedef enum {
+    PORT_GPIO_SPEED_LOW = 0,
+    PORT_GPIO_SPEED_MEDIUM,
+    PORT_GPIO_SPEED_HIGH,
+    PORT_GPIO_SPEED_VERY_HIGH
+} gpio_speed;
+
+typedef struct {
+    uint8_t speed : 2;
+} gpio_config;
+
 void port_hal_init(void);
 int port_hal_deinit(void);
+int port_hal_gpio_config(port_group group, uint8_t pin, port_type type, port_dir dir, void *attr);
+int port_hal_serial_config(const uart_config *config);
 int port_register(port_group group, uint8_t pin, port_type type, port_dir dir, void *attr);
+
 int port_hal_gpio_read(port_group group, uint8_t pin, int *value);
 int port_hal_gpio_write(port_group group, uint8_t pin, int value);
-int port_hal_serial_out(port_group group, uint8_t pin, uint8_t *data, uint8_t len);
-int port_hal_serial_in(port_group group, uint8_t pin, uint8_t *data, uint8_t *len);
+int port_hal_serial_out(uint8_t uart_num, uint8_t *data, uint8_t len);
+int port_hal_serial_in(uint8_t uart_num, uint8_t *data, uint8_t *len);
 
 #endif

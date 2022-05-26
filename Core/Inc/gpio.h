@@ -36,6 +36,7 @@ extern "C" {
 /* USER CODE END Private defines */
 
 void MX_GPIO_Init(void);
+void gpio_init(GPIO_TypeDef *gpio_type, uint32_t pin, uint32_t dir, uint32_t speed);
 
 /* USER CODE BEGIN Prototypes */
 

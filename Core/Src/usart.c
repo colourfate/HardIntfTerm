@@ -23,22 +23,84 @@
 #include "common.h"
 
 #define UART_RX_MAX_LEN 128
+
+typedef struct {
+    uint8_t uart_num;
+    uint8_t rx_temp;
+    osMessageQueueId_t queue;
+    UART_HandleTypeDef *uart_def ;
+} uart_context;
+
 #ifdef STM32F411xE
 #define MAX_UART_PORT_NUM 2
+
+/* Adapt to stm32 hal library */
+UART_HandleTypeDef huart1 = {.Instance = USART1};
+UART_HandleTypeDef huart2 = {.Instance = USART2};
+
+static uart_context g_uart_ctx_tab[MAX_UART_PORT_NUM] = {
+    { .uart_num = 1, .uart_def = &huart1 },
+    { .uart_num = 2, .uart_def = &huart2 },
+};
 #else
-#define MAX_UART_PORT_NUM 0
+#error No define chip support uart context
 #endif
 
-UART_HandleTypeDef huart2;
+static inline uart_context *find_uart_ctx(int uart_num)
+{
+    int i;
 
-static uint8_t g_rx_byte;
-static osMessageQueueId_t g_rx_queue[MAX_UART_PORT_NUM];
+    for (i = 0; i < MAX_UART_PORT_NUM; i++) {
+        if (g_uart_ctx_tab[i].uart_num == uart_num) {
+            return &g_uart_ctx_tab[i];
+        }
+    }
 
-// FIXME: 此次整改
-static UART_HandleTypeDef *g_uart_tab[MAX_UART_PORT_NUM] = {
-    NULL, &huart2
-};
+    return NULL;
+}
 
+static inline uart_context *find_uart_ctx_by_def(UART_HandleTypeDef *uart_def)
+{
+    int i;
+
+    for (i = 0; i < MAX_UART_PORT_NUM; i++) {
+        if (g_uart_ctx_tab[i].uart_def == uart_def) {
+            return &g_uart_ctx_tab[i];
+        }
+    }
+
+    return NULL;
+}
+
+int serial_init(int uart_num, UART_InitTypeDef *hal_uart_init)
+{
+    uart_context *uart_ctx;
+
+    if (hal_uart_init == NULL) {
+        return osError;
+    }
+
+    uart_ctx = find_uart_ctx(uart_num);
+    if (uart_ctx == NULL) {
+        return osError;
+    }
+
+    uart_ctx->uart_def->Init = *hal_uart_init;
+    if (HAL_UART_Init(uart_ctx->uart_def) != HAL_OK) {
+        return osError;
+    }
+
+    HAL_UART_Receive_IT(&uart_ctx->uart_def->Instance, &uart_ctx->rx_temp, 1);
+    uart_ctx->queue = osMessageQueueNew(UART_RX_MAX_LEN, 1, NULL);
+    if (uart_ctx->queue == NULL) {
+        HAL_UART_DeInit(uart_ctx->uart_def);
+        return osError;
+    }
+
+    return osOK;
+}
+
+/*
 void MX_USART2_UART_Init(void)
 {
     huart2.Instance = USART2;
@@ -62,35 +124,33 @@ void MX_USART2_UART_Init(void)
         Error_Handler();
     }
 }
+*/
 
 void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
 {
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    if (uartHandle->Instance == USART2) {
+        __HAL_RCC_USART2_CLK_ENABLE();
+        __HAL_RCC_GPIOA_CLK_ENABLE();
+        /**USART2 GPIO Configuration
+        PA2     ------> USART2_TX
+        PA3     ------> USART2_RX
+        */
+        GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3;
+        GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+        GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
+        HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-  if(uartHandle->Instance==USART2)
-  {
-    __HAL_RCC_USART2_CLK_ENABLE();
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    /**USART2 GPIO Configuration
-    PA2     ------> USART2_TX
-    PA3     ------> USART2_RX
-    */
-    GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-    /* USART2 interrupt Init */
-    HAL_NVIC_SetPriority(USART2_IRQn, 5, 0);
-    HAL_NVIC_EnableIRQ(USART2_IRQn);
-  }
+        /* USART2 interrupt Init */
+        HAL_NVIC_SetPriority(USART2_IRQn, 5, 0);
+        HAL_NVIC_EnableIRQ(USART2_IRQn);
+    }
 }
 
 void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 {
-
   if(uartHandle->Instance==USART2)
   {
     __HAL_RCC_USART2_CLK_DISABLE();
@@ -107,29 +167,39 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 /* USER CODE BEGIN 1 */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    (void)osMessageQueuePut(g_rx_queue[1], &g_rx_byte, 0, 0);
-    HAL_UART_Receive_IT(huart, &g_rx_byte, 1);
+    uart_context *uart_ctx = find_uart_ctx_by_def(huart);
+    if (uart_ctx == NULL) {
+        return;
+    }
+
+    (void)osMessageQueuePut(uart_ctx->queue, &uart_ctx->rx_temp, 0, 0);
+    HAL_UART_Receive_IT(huart, &uart_ctx->rx_temp, 1);
 }
 
-int uart_transmit(uint8_t num, uint8_t *data, int len)
+int uart_transmit(uint8_t uart_num, uint8_t *data, int len)
 {
-    if (num >= count_of(g_uart_tab)) {
-        log_err("Not support uart num: %d\n", num);
+    uart_context *uart_ctx = find_uart_ctx(uart_num);
+    if (uart_ctx == NULL) {
         return osError;
     }
 
-    HAL_UART_Transmit(g_uart_tab[num], data, len, 0xFFFF);
+    if (data == NULL) {
+        return osError;
+    }
+
+    HAL_UART_Transmit(uart_ctx->uart_def, data, len, 0xFFFF);
 
     return osOK;
 }
 
-uint32_t read_uart_rx_buffer(uint8_t num, uint8_t *data, uint8_t len)
+uint32_t read_uart_rx_buffer(uint8_t uart_num, uint8_t *data, uint8_t len)
 {
     uint8_t i;
     int ret;
+    uart_context *uart_ctx = find_uart_ctx(uart_num);
 
-    if (num >= count_of(g_rx_queue)) {
-        log_err("Not support uart num: %d\n", num);
+    if (uart_ctx == NULL) {
+        log_err("support uart num: %d\n", uart_num);
         return osError;
     }
 
@@ -138,7 +208,7 @@ uint32_t read_uart_rx_buffer(uint8_t num, uint8_t *data, uint8_t len)
         return 0;
     }
 
-    if (g_rx_queue[num] == NULL) {
+    if (uart_ctx->queue == NULL) {
         log_err("rx queue not init\n");
         return 0;
     }
@@ -146,7 +216,7 @@ uint32_t read_uart_rx_buffer(uint8_t num, uint8_t *data, uint8_t len)
     for (i = 0; i < len; i++) {
         uint8_t byte;
 
-        ret = osMessageQueueGet(g_rx_queue[num], &byte, NULL, 0);
+        ret = osMessageQueueGet(uart_ctx->queue, &byte, NULL, 0);
         if (ret == osErrorResource) {
             break;
         }

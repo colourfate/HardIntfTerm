@@ -7,12 +7,6 @@
 #define INTF_PROTOCOL_PACKET_MAX CDC_DATA_FS_MAX_PACKET_SIZE
 #define CHIP_PIN_MAX 16
 
-enum {
-    USB_MSG_OK = 0,
-    USB_MSG_RETRY,
-    USB_MSG_FAILED = -1
-};
-
 typedef enum {
     INTF_CMD_MODE_CTRL = 0,
     INTF_CMD_MODE_CFG,

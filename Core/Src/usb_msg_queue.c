@@ -198,25 +198,57 @@ static int gpio_write_exec_func(cmd_packet *packet)
 static int serial_in_exec_func(cmd_packet *packet)
 {
     log_info("\n");
-    return port_hal_serial_in(packet->gpio.bit.group, packet->gpio.bit.pin, packet->data, &packet->data_len);;
+    if (packet->gpio.bit.group != PORT_MUL_FUNC) {
+        log_err("serial group type invalid: %d\n", packet->gpio.bit.group);
+        return 0;
+    }
+
+    return port_hal_serial_in(packet->gpio.bit.pin, packet->data, &packet->data_len);;
 }
 
 static int serial_out_exec_func(cmd_packet *packet)
 {
     log_info("\n");
-    return port_hal_serial_out(packet->gpio.bit.group, packet->gpio.bit.pin, packet->data, packet->data_len);
+    if (packet->gpio.bit.group != PORT_MUL_FUNC) {
+        log_err("serial group type invalid: %d\n", packet->gpio.bit.group);
+        return USB_MSG_FAILED;
+    }
+
+    return port_hal_serial_out(packet->gpio.bit.pin, packet->data, packet->data_len);
 }
 
 static int gpio_cfg_exec_func(cmd_packet *packet)
 {
+    int ret;
+
     log_info("\n");
+    ret = port_hal_gpio_config(packet->gpio.bit.group, packet->gpio.bit.pin, packet->cmd.bit.type,
+        packet->cmd.bit.dir, packet->data);
+    if (ret != osOK) {
+        log_err("port config failed\n");
+        return ret;
+    }
+
     return port_register(packet->gpio.bit.group, packet->gpio.bit.pin, 
         packet->cmd.bit.type, packet->cmd.bit.dir, packet->data);
 }
 
 static int serial_cfg_exec_func(cmd_packet *packet)
 {
+    int ret;
     log_info("\n");
+
+    if (packet->data_len != sizeof(uart_config)) {
+        log_err("invalid data len: %d\n", packet->data_len);
+        return osError;
+    }
+
+    ret = port_hal_serial_config((void *)packet->data);
+    if (ret != osOK) {
+        log_err("port config failed\n");
+        return ret;
+    }
+
     return port_register(packet->gpio.bit.group, packet->gpio.bit.pin, 
         packet->cmd.bit.type, packet->cmd.bit.dir, packet->data);
 }
