@@ -20,6 +20,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
+#include "tim.h"
 #include "usart.h"
 #include "usb_device.h"
 #include "gpio.h"
@@ -36,6 +37,7 @@ int main(void)
     HAL_Init();
     SystemClock_Config();
     MX_GPIO_Init();
+    MX_TIM3_Init();
 
     osKernelInitialize();  /* Call init function for freertos objects (in freertos.c) */
     MX_FREERTOS_Init();
