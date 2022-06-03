@@ -21,8 +21,6 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "usbd_custom_hid_if.h"
-#include "usb_msg_queue.h"
-#include "common.h"
 
 /* USER CODE BEGIN INCLUDE */
 

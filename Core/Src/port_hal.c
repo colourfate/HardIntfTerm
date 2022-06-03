@@ -1,5 +1,5 @@
 #include "port_hal.h"
-#include "common.h"
+#include "usb_log.h"
 #include "usb_msg_queue.h"
 #include "cmsis_os2.h"
 #include "FreeRTOS.h"
@@ -118,12 +118,12 @@ static port_define *get_port_define(port_group group, uint8_t pin, port_type typ
         port_define *port_def;
 
         listGET_OWNER_OF_NEXT_ENTRY(port_def, &g_port_reg_tab);
-        
+
         // Find through pin number
         if (port_def->group == group && port_def->pin == pin && port_def->type == type && port_def->dir == dir) {
             return port_def;
         // Fnd through port number
-        } else if (group == PORT_MUL_FUNC && port_def->type == type && 
+        } else if (group == PORT_MUL_FUNC && port_def->type == type &&
             priv_cmp != NULL && priv_cmp(port_def->attr, pin)) {
             return port_def;
         }
@@ -137,7 +137,7 @@ static inline port_define *get_def_by_pin_num(port_group group, uint8_t pin, por
     return get_port_define(group, pin, type, dir, NULL);
 }
 
-static inline port_define *get_def_by_port_num(port_type type, uint8_t port_num, 
+static inline port_define *get_def_by_port_num(port_type type, uint8_t port_num,
     bool (*priv_cmp)(void *attr, uint8_t port_num))
 {
     return get_port_define(PORT_MUL_FUNC, port_num, type, PORT_DIR_MAX, priv_cmp);
@@ -173,7 +173,7 @@ static inline uint32_t get_gpio_pin(uint32_t pin_num)
     if (pin_num > 15) {
         log_err("Not support gpio pin: %lu\n", pin_num);
         return 0xffffffff;
-    } 
+    }
 
     return (1 << pin_num);
 }
@@ -224,7 +224,7 @@ int port_hal_gpio_read(port_group group, uint8_t pin, int *value)
     }
 
     *value = HAL_GPIO_ReadPin(gpio_type, gpio_pin);
-    
+
     return osOK;
 }
 
@@ -275,7 +275,7 @@ int port_hal_serial_config(const uart_config *config)
     int ret;
     port_define *port_def;
     UART_InitTypeDef hal_uart_init;
-    
+
     if (config == NULL) {
         log_err("param is NULL\n");
         return osError;
@@ -285,7 +285,7 @@ int port_hal_serial_config(const uart_config *config)
         log_err("param is invalid\n");
         return osError;
     }
-    
+
     port_def = get_def_by_port_num(PORT_TYPE_SERIAL, config->uart_num, serial_config_compare);
     if (port_def != NULL) {
         log_info("uart%d have been init\n", config->uart_num);

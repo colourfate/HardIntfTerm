@@ -1,7 +1,7 @@
 #ifndef _PORT_HAL_H_
 #define _PORT_HAL_H_
 
-#include "common.h"
+#include "usb_log.h"
 
 // TODO: 名称整改
 enum {

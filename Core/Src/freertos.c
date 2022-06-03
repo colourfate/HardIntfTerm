@@ -23,11 +23,11 @@
 #include "task.h"
 #include "main.h"
 #include "cmsis_os2.h"
-#include "usbd_cdc_if.h"
 #include "usb_msg_queue.h"
-#include "common.h"
+#include "usb_log.h"
 #include "usart.h"
 #include "port_hal.h"
+#include "usbd_cdc_if.h"
 
 osThreadId_t usb_task_handle;
 const osThreadAttr_t usb_task_attributes = {
@@ -36,39 +36,24 @@ const osThreadAttr_t usb_task_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 
-void usb_task(void *argument);
-
+void test_case_init(void);
 extern void MX_USB_DEVICE_Init(void);
-extern USBD_HandleTypeDef hUsbDeviceFS;
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
-
-/**
-  * @brief  FreeRTOS initialization
-  * @param  None
-  * @retval None
-  */
-void MX_FREERTOS_Init(void) {
-    MX_USB_DEVICE_Init();
-    log_err("usb init ok\n");
-    usb_task_handle = osThreadNew(usb_task, NULL, &usb_task_attributes);
-}
 
 void usb_task(void *argument)
 {
-    int ret;
     cmd_packet *packet;
+    int ret;
 
-    packet = malloc(INTF_PROTOCOL_PACKET_MAX);
+    /* The function SHOULD be placed in thread, and CANNOT be in main, Otherwise the stack may overflow */
     ret = usb_msg_queue_init();
     if (ret < 0) {
         log_err("usb_msg_queue_init failed\n");
-        goto exit;
+        return;
     }
 
-    test_case_init();
-
-    for(;;)
-    {
+    packet = malloc(INTF_PROTOCOL_PACKET_MAX);
+    for(;;) {
         int ret;
 
         ret = usb_msg_queue_block_get(packet);
@@ -76,7 +61,7 @@ void usb_task(void *argument)
             log_err("usb_msg_queue_get failed\n");
             break;
         }
-        
+
         log_info("get packet: [cmd: %d, dir: %d, mode: %d, group: %d, pin: %d, len: %d, value: %d]\n",
             packet->cmd.bit.type, packet->cmd.bit.dir, packet->cmd.bit.mode,
             packet->gpio.bit.group, packet->gpio.bit.pin,
@@ -98,18 +83,25 @@ void usb_task(void *argument)
             for (i = 0; i < packet->data_len; i++) {
                 log_info_raw("%c(%d) ", packet->data[i], i);
             }
-            
+
             do {
                 ret = CDC_Transmit_FS((uint8_t *)packet, sizeof(cmd_packet) + packet->data_len - 1);
             } while (ret == USBD_BUSY);
         }
     }
 
-exit:
     free(packet);
     usb_msg_queue_deinit();
     /* USER CODE END led_task */
     while (1) {};
+}
+
+void MX_FREERTOS_Init(void) {
+    MX_USB_DEVICE_Init();
+    log_info("usb init ok\n");
+
+    test_case_init();
+    usb_task_handle = osThreadNew(usb_task, NULL, &usb_task_attributes);
 }
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

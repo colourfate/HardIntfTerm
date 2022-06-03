@@ -23,37 +23,9 @@
 #include "usart.h"
 #include "usb_device.h"
 #include "gpio.h"
-#include "usart.h"
 
 void SystemClock_Config(void);
 void MX_FREERTOS_Init(void);
-
-#ifdef __GNUC__
-  #define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
-#else
-  #define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
-#endif /* __GNUC__ */
-
-PUTCHAR_PROTOTYPE
-{
-    //HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, 0xFFFF);
-    uart_transmit(2, (uint8_t *)&ch, 1);
-    return ch;
-}
-
-int _write(int file, char *ptr, int len)
-{
-    int DataIdx;
-
-    for (DataIdx = 0; DataIdx < len; DataIdx++) {
-      if (*ptr == '\n') {
-        __io_putchar('\r');
-      }
-      __io_putchar(*ptr++);
-    }
-    return len;
-}
-/* USER CODE END 0 */
 
 /**
   * @brief  The application entry point.
@@ -61,20 +33,9 @@ int _write(int file, char *ptr, int len)
   */
 int main(void)
 {
-    UART_InitTypeDef uart2_init;
-
     HAL_Init();
     SystemClock_Config();
     MX_GPIO_Init();
-
-    uart2_init.BaudRate = 115200;
-    uart2_init.WordLength = UART_WORDLENGTH_8B;
-    uart2_init.StopBits = UART_STOPBITS_1;
-    uart2_init.Parity = UART_PARITY_NONE;
-    uart2_init.Mode = UART_MODE_TX_RX;
-    uart2_init.HwFlowCtl = UART_HWCONTROL_NONE;
-    uart2_init.OverSampling = UART_OVERSAMPLING_16;
-    serial_init(2, &uart2_init);
 
     osKernelInitialize();  /* Call init function for freertos objects (in freertos.c) */
     MX_FREERTOS_Init();

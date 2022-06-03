@@ -1,7 +1,6 @@
 #ifndef _INTF_CMD_BRIDGE_
 #define _INTF_CMD_BRIDGE_
 
-#include "common.h"
 #include "usbd_cdc.h"
 
 #define INTF_PROTOCOL_PACKET_MAX CDC_DATA_FS_MAX_PACKET_SIZE
@@ -10,6 +9,7 @@
 typedef enum {
     INTF_CMD_MODE_CTRL = 0,
     INTF_CMD_MODE_CFG,
+    INTF_CMD_MODE_INFO,
     INTF_CMD_MODE_MAX
 } intf_cmd_mode;
 

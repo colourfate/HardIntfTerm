@@ -20,7 +20,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "usart.h"
 #include "cmsis_os2.h"
-#include "common.h"
+#include "usb_log.h"
 
 #define UART_RX_MAX_LEN 128
 
@@ -77,22 +77,26 @@ int serial_init(int uart_num, UART_InitTypeDef *hal_uart_init)
     uart_context *uart_ctx;
 
     if (hal_uart_init == NULL) {
+        log_err("param is NULL\n");
         return osError;
     }
 
     uart_ctx = find_uart_ctx(uart_num);
     if (uart_ctx == NULL) {
+        log_err("Not find uart%d\n", uart_num);
         return osError;
     }
 
     uart_ctx->uart_def->Init = *hal_uart_init;
     if (HAL_UART_Init(uart_ctx->uart_def) != HAL_OK) {
+        log_err("HAL_UART_Init failed\n");
         return osError;
     }
 
-    HAL_UART_Receive_IT(&uart_ctx->uart_def->Instance, &uart_ctx->rx_temp, 1);
+    HAL_UART_Receive_IT(uart_ctx->uart_def, &uart_ctx->rx_temp, 1);
     uart_ctx->queue = osMessageQueueNew(UART_RX_MAX_LEN, 1, NULL);
     if (uart_ctx->queue == NULL) {
+        log_err("osMessageQueueNew failed\n");
         HAL_UART_DeInit(uart_ctx->uart_def);
         return osError;
     }
@@ -215,10 +219,12 @@ int uart_transmit(uint8_t uart_num, uint8_t *data, int len)
 {
     uart_context *uart_ctx = find_uart_ctx(uart_num);
     if (uart_ctx == NULL) {
+        log_err("Not find uart%d\n", uart_num);
         return osError;
     }
 
     if (data == NULL) {
+        log_err("param is NULL\n");
         return osError;
     }
 
@@ -235,7 +241,7 @@ uint32_t read_uart_rx_buffer(uint8_t uart_num, uint8_t *data, uint8_t len)
 
     if (uart_ctx == NULL) {
         log_err("support uart num: %d\n", uart_num);
-        return osError;
+        return 0;
     }
 
     if (data == NULL || len > UART_RX_MAX_LEN) {
