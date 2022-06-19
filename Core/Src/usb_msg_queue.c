@@ -41,31 +41,26 @@ int usb_msg_queue_deinit(void)
     return USB_MSG_OK;
 }
 
+/* Called at usb interrupt, don't put log_err here  */
 int usb_msg_queue_rawput(uint8_t *data, uint8_t len)
 {
     uint8_t i;
     uint32_t ret;
 
     if (data == NULL) {
-        log_err("data is NULL\n");
         return USB_MSG_FAILED;
     }
 
     if (len > INTF_PROTOCOL_PACKET_MAX) {
-        log_err("len is too large: %d\n", len);
         return USB_MSG_FAILED;
     }
 
-    log_info("");
     for (i = 0; i < len; i++) {
-        log_info_raw("0x%x ", data[i]);
         ret = osMessageQueuePut(g_terminal_panel.cmd_queue, &data[i], 0, 0);
         if (ret != osOK) {
-            log_err("put data failed\n");
             return USB_MSG_FAILED;
         }
     }
-    log_info_raw("\n");
 
     return USB_MSG_OK;
 }
@@ -204,20 +199,45 @@ static int serial_out_exec_func(cmd_packet *packet)
     return port_hal_serial_out(packet->gpio.bit.pin, packet->data, packet->data_len);
 }
 
+static int pwm_write_exec_func(cmd_packet *packet)
+{
+    int ret;
+    uint16_t value;
+    log_info("\n");
+
+    if (packet->data_len != 2) {
+        log_err("Invalid param len: %d\n", packet->data_len);
+        return USB_MSG_FAILED;
+    }
+
+    value = packet->data[0] | packet->data[1] << 8;
+    if (value > HAL_PWM_MAX_PULSE) {
+        log_err("Invalid param data: %d\n", packet->data[0]);
+        return USB_MSG_FAILED;
+    }
+
+    ret = port_hal_pwm_write(packet->gpio.bit.group, packet->gpio.bit.pin, value);
+    if (ret != osOK) {
+        log_err("port_hal_gpio_read failed\n");
+        return USB_MSG_FAILED;
+    }
+
+    return USB_MSG_OK;
+}
+
 static int gpio_cfg_exec_func(cmd_packet *packet)
 {
     int ret;
 
     log_info("\n");
-    ret = port_hal_gpio_config(packet->gpio.bit.group, packet->gpio.bit.pin, packet->cmd.bit.type,
-        packet->cmd.bit.dir, packet->data);
+    ret = port_hal_gpio_config(packet->gpio.bit.group, packet->gpio.bit.pin, packet->cmd.bit.dir, (void *)packet->data);
     if (ret != osOK) {
         log_err("port config failed\n");
         return ret;
     }
 
     return port_register(packet->gpio.bit.group, packet->gpio.bit.pin,
-        packet->cmd.bit.type, packet->cmd.bit.dir, packet->data);
+        packet->cmd.bit.type, packet->cmd.bit.dir, packet->data, packet->data_len);
 }
 
 static int serial_cfg_exec_func(cmd_packet *packet)
@@ -237,7 +257,27 @@ static int serial_cfg_exec_func(cmd_packet *packet)
     }
 
     return port_register(packet->gpio.bit.group, packet->gpio.bit.pin,
-        packet->cmd.bit.type, packet->cmd.bit.dir, packet->data);
+        packet->cmd.bit.type, packet->cmd.bit.dir, packet->data, packet->data_len);
+}
+
+static int pwm_cfg_exec_func(cmd_packet *packet)
+{
+    int ret;
+    log_info("\n");
+
+    if (packet->data_len != sizeof(pwm_config)) {
+        log_err("invalid data len: %d\n", packet->data_len);
+        return osError;
+    }
+
+    ret = port_hal_pwm_config(packet->gpio.bit.group, packet->gpio.bit.pin, (void *)packet->data);
+    if (ret != osOK) {
+        log_err("port config failed\n");
+        return ret;
+    }
+
+    return port_register(packet->gpio.bit.group, packet->gpio.bit.pin,
+        packet->cmd.bit.type, packet->cmd.bit.dir, packet->data, packet->data_len);
 }
 
 typedef struct {
@@ -253,9 +293,11 @@ static const cmd_exec_unit g_cmd_exec_tab[] = {
     { PORT_TYPE_GPIO, INTF_CMD_MODE_CTRL, PORT_DIR_OUT, gpio_write_exec_func },
     { PORT_TYPE_SERIAL, INTF_CMD_MODE_CTRL, PORT_DIR_IN, serial_in_exec_func },
     { PORT_TYPE_SERIAL, INTF_CMD_MODE_CTRL, PORT_DIR_OUT, serial_out_exec_func },
+    { PORT_TYPE_PWM, INTF_CMD_MODE_CTRL, PORT_DIR_OUT, pwm_write_exec_func },
     /* config function */
     { PORT_TYPE_GPIO, INTF_CMD_MODE_CFG, PORT_DIR_MAX, gpio_cfg_exec_func },
     { PORT_TYPE_SERIAL, INTF_CMD_MODE_CFG, PORT_DIR_MAX, serial_cfg_exec_func },
+    { PORT_TYPE_PWM, INTF_CMD_MODE_CFG, PORT_DIR_OUT, pwm_cfg_exec_func }
 };
 
 int msg_parse_exec(cmd_packet *packet)

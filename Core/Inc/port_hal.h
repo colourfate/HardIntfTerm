@@ -3,6 +3,10 @@
 
 #include "usb_log.h"
 
+#define HAL_PWM_MAX_FREQ 20000
+#define HAL_PWM_MIN_FREQ 50
+#define HAL_PWM_MAX_PULSE 1000
+
 // TODO: 名称整改
 enum {
     USB_MSG_OK = 0,
@@ -109,15 +113,22 @@ typedef struct {
     uint8_t speed : 2;
 } gpio_config;
 
+typedef struct {
+    uint16_t frequency;     // 1Hz~20KHz
+    uint16_t pulse;         // 0~1000
+} pwm_config;
+
 void port_hal_init(void);
 int port_hal_deinit(void);
-int port_hal_gpio_config(port_group group, uint8_t pin, port_type type, port_dir dir, void *attr);
+int port_hal_gpio_config(port_group group, uint8_t pin, port_dir dir, gpio_config *attr);
 int port_hal_serial_config(const uart_config *config);
-int port_register(port_group group, uint8_t pin, port_type type, port_dir dir, void *attr);
+int port_hal_pwm_config(port_group group, uint8_t pin, const pwm_config *config);
+int port_register(port_group group, uint8_t pin, port_type type, port_dir dir, void *attr, uint8_t attr_len);
 
 int port_hal_gpio_read(port_group group, uint8_t pin, int *value);
-int port_hal_gpio_write(port_group group, uint8_t pin, int value);
+int port_hal_gpio_write(port_group group, uint8_t pin, uint8_t value);
 int port_hal_serial_out(uint8_t uart_num, uint8_t *data, uint8_t len);
 int port_hal_serial_in(uint8_t uart_num, uint8_t *data, uint8_t *len);
+int port_hal_pwm_write(port_group group, uint8_t pin, uint16_t value);
 
 #endif

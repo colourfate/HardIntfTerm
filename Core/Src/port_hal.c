@@ -12,6 +12,7 @@
 
 static struct xLIST g_port_reg_tab;
 
+// TODO: 放到外面去
 typedef struct {
     struct xLIST_ITEM item;
     port_group group;
@@ -26,22 +27,9 @@ void port_hal_init(void)
     vListInitialise(&g_port_reg_tab);
 }
 
-static uint8_t get_attr_len(port_type type)
-{
-    switch (type) {
-        case PORT_TYPE_GPIO:
-            return 0;
-        case PORT_TYPE_SERIAL:
-            return sizeof(uart_config);
-        default:
-            return 0xff;
-    }
-}
-
-int port_register(port_group group, uint8_t pin, port_type type, port_dir dir, void *attr)
+int port_register(port_group group, uint8_t pin, port_type type, port_dir dir, void *attr, uint8_t attr_len)
 {
     port_define *port_def;
-    uint8_t attr_len = get_attr_len(type);
     uint8_t i;
 
     if (attr == NULL || attr_len > ATTR_LEN_MAX) {
@@ -143,6 +131,10 @@ static inline port_define *get_def_by_port_num(port_type type, uint8_t port_num,
     return get_port_define(PORT_MUL_FUNC, port_num, type, PORT_DIR_MAX, priv_cmp);
 }
 
+/**********************************************************************************************/
+/******************************************** GPIO ********************************************/
+/**********************************************************************************************/
+
 static GPIO_TypeDef *get_gpio_type_define(port_group gpio_group)
 {
     GPIO_TypeDef *gpio_type;
@@ -178,14 +170,13 @@ static inline uint32_t get_gpio_pin(uint32_t pin_num)
     return (1 << pin_num);
 }
 
-int port_hal_gpio_config(port_group group, uint8_t pin, port_type type, port_dir dir, void *attr)
+int port_hal_gpio_config(port_group group, uint8_t pin, port_dir dir, gpio_config *config)
 {
-    gpio_config *config = (gpio_config *)attr;
     GPIO_TypeDef *gpio_type = get_gpio_type_define(group);
     uint32_t gpio_pin = get_gpio_pin(pin);
     uint32_t gpio_dir = (dir == PORT_DIR_IN ? GPIO_MODE_INPUT : GPIO_MODE_OUTPUT_PP);
 
-    if (attr == NULL) {
+    if (config == NULL) {
         log_err("Need port attribution\n");
         return USB_MSG_FAILED;
     }
@@ -228,7 +219,7 @@ int port_hal_gpio_read(port_group group, uint8_t pin, int *value)
     return osOK;
 }
 
-int port_hal_gpio_write(port_group group, uint8_t pin, int value)
+int port_hal_gpio_write(port_group group, uint8_t pin, uint8_t value)
 {
     GPIO_TypeDef *gpio_type = get_gpio_type_define(group);
     uint32_t gpio_pin = get_gpio_pin(pin);
@@ -248,6 +239,10 @@ int port_hal_gpio_write(port_group group, uint8_t pin, int value)
 
     return osOK;
 }
+
+/**********************************************************************************************/
+/******************************************** SERIAL ******************************************/
+/**********************************************************************************************/
 
 static bool serial_config_compare(void *attr, uint8_t port_num)
 {
@@ -350,4 +345,49 @@ int port_hal_serial_in(uint8_t uart_num, uint8_t *data, uint8_t *len)
 exit:
     *len = 0;
     return osError;
+}
+
+/**********************************************************************************************/
+/********************************************* PWM ********************************************/
+/**********************************************************************************************/
+
+static inline bool pwm_config_is_invalid(const pwm_config *config)
+{
+    return config->frequency > HAL_PWM_MAX_FREQ || config->frequency < HAL_PWM_MIN_FREQ ||
+        config->pulse > HAL_PWM_MAX_PULSE;
+}
+
+int port_hal_pwm_config(port_group group, uint8_t pin, const pwm_config *config)
+{
+    port_define *port_def;
+
+    if (config == NULL) {
+        log_err("param is NULL\n");
+        return osError;
+    }
+
+    if (pwm_config_is_invalid(config)) {
+        log_err("param is invalid\n");
+        return osError;
+    }
+
+    port_def = get_def_by_pin_num(group, pin, PORT_TYPE_PWM, PORT_DIR_OUT);
+    if (port_def != NULL) {
+        log_info("group: %d, pin: %d have been init\n", group, pin);
+        return osOK;
+    }
+
+    return osOK;
+}
+
+int port_hal_pwm_write(port_group group, uint8_t pin, uint16_t value)
+{
+    port_define *port_def = get_def_by_pin_num(group, pin, PORT_TYPE_PWM, PORT_DIR_OUT);
+
+    if (port_def == NULL) {
+        log_err("port not register: group: %d, pin: %d\n", group, pin);
+        return osError;
+    }
+
+    return osOK;
 }

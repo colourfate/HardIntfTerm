@@ -100,7 +100,7 @@ void MX_FREERTOS_Init(void) {
     MX_USB_DEVICE_Init();
     log_info("usb init ok\n");
 
-    test_case_init();
+    //test_case_init();
     usb_task_handle = osThreadNew(usb_task, NULL, &usb_task_attributes);
 }
 
